@@ -2,9 +2,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // Função para obter a chave de forma dinâmica
 const getApiKey = () => {
-  return localStorage.getItem("LEDU_API_KEY") || 
-         (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : "") || 
-         "";
+  // 1. Tenta pegar do localStorage (caso você queira testar com outra chave)
+  const localKey = typeof window !== 'undefined' ? localStorage.getItem("LEDU_API_KEY") : null;
+  if (localKey) return localKey;
+
+  // 2. Tenta pegar da variável de ambiente do Vite (para o Netlify)
+  // Usamos uma técnica para evitar erro de lint/typescript
+  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  if (envKey) return envKey;
+
+  // 3. Fallback para o ambiente de desenvolvimento do AI Studio
+  return (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : "") || "";
 };
 
 // Criamos uma função que retorna a instância do AI sempre atualizada
