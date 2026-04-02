@@ -22,7 +22,7 @@ import ReactMarkdown from "react-markdown";
 import { geminiService, type QuizQuestion, type StudyTopic } from "./services/geminiService";
 import { cn } from "./lib/utils";
 
-type AppState = "HOME" | "CHOICE" | "STUDY" | "QUIZ_SETUP" | "QUIZ" | "RESULTS";
+type AppState = "HOME" | "CHOICE" | "STUDY" | "QUIZ_SETUP" | "QUIZ" | "RESULTS" | "QUICK_ANSWER" | "QUICK_ANSWER_RESULT";
 
 export default function App() {
   const [state, setState] = useState<AppState>("HOME");
@@ -41,6 +41,9 @@ export default function App() {
   const [uploadMethod, setUploadMethod] = useState<"TEXT" | "FILE">("TEXT");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Quick Answer Data
+  const [quickAnswer, setQuickAnswer] = useState<{ answer: string, explanation: string } | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -111,6 +114,27 @@ export default function App() {
     setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: optionIndex }));
   };
 
+  const startQuickAnswer = async () => {
+    setLoading(true);
+    try {
+      let mediaItems: { base64Data: string, mimeType: string }[] | undefined;
+      if (selectedFiles.length > 0) {
+        mediaItems = await Promise.all(selectedFiles.map(async (file) => ({
+          base64Data: await fileToBase64(file),
+          mimeType: file.type
+        })));
+      }
+      
+      const result = await geminiService.getQuickAnswer(uploadText, mediaItems);
+      setQuickAnswer(result);
+      setLoading(false);
+      setState("QUICK_ANSWER_RESULT");
+    } catch (error) {
+      console.error("Erro ao obter resposta rápida:", error);
+      setLoading(false);
+    }
+  };
+
   const nextQuestion = () => {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
@@ -141,6 +165,7 @@ export default function App() {
     setUserAnswers({});
     setUploadText("");
     setSelectedFiles([]);
+    setQuickAnswer(null);
   };
 
   return (
@@ -212,10 +237,191 @@ export default function App() {
                   Começar Jornada
                   <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
+
+                <div className="pt-4">
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-slate-200" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-[#f8fafc] px-4 text-slate-400 font-medium tracking-widest">Ou use</span>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      reset();
+                      setState("QUICK_ANSWER");
+                    }}
+                    className="mt-6 w-full bg-white border-2 border-slate-200 hover:border-indigo-500 text-slate-700 font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-3 group"
+                  >
+                    <div className="bg-indigo-50 p-2 rounded-lg group-hover:bg-indigo-600 transition-colors">
+                      <HelpCircle className="w-5 h-5 text-indigo-600 group-hover:text-white" />
+                    </div>
+                    Resposta Rápida
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
 
+          {/* QUICK ANSWER SETUP STATE */}
+          {state === "QUICK_ANSWER" && (
+            <motion.div 
+              key="quick-answer"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="max-w-2xl mx-auto space-y-8"
+            >
+              <div className="text-center space-y-2">
+                <div className="bg-indigo-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <HelpCircle className="text-indigo-600 w-8 h-8" />
+                </div>
+                <h2 className="text-3xl font-bold text-slate-900">Resposta Rápida</h2>
+                <p className="text-slate-500">Mande sua dúvida por texto ou foto e receba a resposta na hora.</p>
+              </div>
+
+              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button 
+                    onClick={() => setUploadMethod("TEXT")}
+                    className={cn(
+                      "flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2",
+                      uploadMethod === "TEXT" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    <FileText className="w-4 h-4" /> Texto
+                  </button>
+                  <button 
+                    onClick={() => setUploadMethod("FILE")}
+                    className={cn(
+                      "flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2",
+                      uploadMethod === "FILE" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    <Camera className="w-4 h-4" /> Foto / Arquivo
+                  </button>
+                </div>
+
+                {uploadMethod === "TEXT" ? (
+                  <textarea 
+                    placeholder="Cole aqui sua pergunta ou dúvida..."
+                    className="w-full h-48 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none transition-all resize-none"
+                    value={uploadText}
+                    onChange={(e) => setUploadText(e.target.value)}
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center hover:border-indigo-500 hover:bg-indigo-50/30 transition-all cursor-pointer group"
+                    >
+                      <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        className="hidden" 
+                        onChange={handleFileChange}
+                        accept="image/*,application/pdf"
+                        multiple
+                      />
+                      <div className="bg-indigo-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                        <Upload className="text-indigo-600 w-8 h-8" />
+                      </div>
+                      <p className="text-slate-600 font-bold">Clique para enviar fotos ou PDFs</p>
+                      <p className="text-slate-400 text-sm mt-1">Você pode usar a câmera ou galeria</p>
+                    </div>
+
+                    {selectedFiles.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {selectedFiles.map((file, idx) => (
+                          <div key={idx} className="relative group bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center gap-2">
+                            <div className="bg-indigo-100 p-2 rounded-lg">
+                              {file.type.startsWith('image/') ? <Camera className="w-4 h-4 text-indigo-600" /> : <FileIcon className="w-4 h-4 text-indigo-600" />}
+                            </div>
+                            <span className="text-xs font-medium text-slate-600 truncate max-w-[80px]">{file.name}</span>
+                            <button 
+                              onClick={() => removeFile(idx)}
+                              className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button 
+                  onClick={startQuickAnswer}
+                  disabled={uploadMethod === "TEXT" ? !uploadText.trim() : selectedFiles.length === 0}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                >
+                  Obter Resposta
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+
+              <button 
+                onClick={() => setState("HOME")}
+                className="mx-auto flex items-center gap-2 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" /> Voltar
+              </button>
+            </motion.div>
+          )}
+
+          {/* QUICK ANSWER RESULT STATE */}
+          {state === "QUICK_ANSWER_RESULT" && quickAnswer && (
+            <motion.div 
+              key="quick-answer-result"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="max-w-2xl mx-auto space-y-8"
+            >
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
+                <div className="bg-indigo-600 p-8 text-white">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="bg-white/20 p-2 rounded-lg">
+                      <CheckCircle2 className="w-6 h-6" />
+                    </div>
+                    <h2 className="text-2xl font-bold">Resposta Identificada</h2>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-sm p-6 rounded-2xl border border-white/20">
+                    <p className="text-xl font-bold leading-relaxed">{quickAnswer.answer}</p>
+                  </div>
+                </div>
+
+                <div className="p-8 space-y-6">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                      <HelpCircle className="w-5 h-5 text-indigo-600" />
+                      Explicação Didática
+                    </h3>
+                    <div className="prose prose-slate max-w-none">
+                      <ReactMarkdown>{quickAnswer.explanation}</ReactMarkdown>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row gap-4">
+                    <button 
+                      onClick={() => setState("QUICK_ANSWER")}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+                    >
+                      <RefreshCcw className="w-5 h-5" /> Outra Pergunta
+                    </button>
+                    <button 
+                      onClick={reset}
+                      className="flex-1 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-600 font-bold py-4 rounded-2xl transition-all"
+                    >
+                      Voltar ao Início
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
           {/* CHOICE STATE */}
           {state === "CHOICE" && (
             <motion.div 

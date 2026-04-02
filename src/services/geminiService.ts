@@ -198,4 +198,52 @@ export const geminiService = {
       return [];
     }
   },
+
+  async getQuickAnswer(text?: string, mediaItems?: { base64Data: string, mimeType: string }[]): Promise<{ answer: string, explanation: string }> {
+    const ai = getAI();
+    
+    const parts: any[] = [];
+    if (mediaItems) {
+      mediaItems.forEach(item => {
+        parts.push({
+          inlineData: {
+            data: item.base64Data,
+            mimeType: item.mimeType,
+          }
+        });
+      });
+    }
+    
+    parts.push({
+      text: `Você é um assistente de estudos. O usuário enviou uma pergunta ou uma imagem de uma questão.
+      Analise o conteúdo (texto ou imagem) e forneça a resposta correta e uma explicação breve e didática.
+      
+      IMPORTANTE: Se o conteúdo estiver em inglês e não for sobre o aprendizado de inglês, traduza para o português.
+      Retorne em formato JSON com os campos "answer" e "explanation".
+      ${text ? `Conteúdo em texto: "${text}"` : ""}`
+    });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [{ parts }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            answer: { type: Type.STRING },
+            explanation: { type: Type.STRING },
+          },
+          required: ["answer", "explanation"],
+        },
+      },
+    });
+
+    try {
+      return JSON.parse(response.text || '{"answer": "Não foi possível identificar", "explanation": "Tente novamente com uma imagem mais clara."}');
+    } catch (e) {
+      console.error("Erro ao obter resposta rápida", e);
+      return { answer: "Erro", explanation: "Ocorreu um erro ao processar sua pergunta." };
+    }
+  },
 };
