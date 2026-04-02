@@ -34,10 +34,37 @@ export interface StudyTopic {
   content: string;
 }
 
+// Função auxiliar para lidar com retentativas em caso de erro de cota (429)
+const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3, delay = 2000): Promise<T> => {
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error?.message || "";
+      const isRetryable = 
+        errorMessage.includes("429") || 
+        errorMessage.includes("Quota exceeded") ||
+        errorMessage.includes("500") ||
+        errorMessage.includes("503") ||
+        errorMessage.includes("rate limit");
+      
+      if (isRetryable && i < maxRetries - 1) {
+        console.warn(`Tentativa ${i + 1} falhou devido a limite de cota. Tentando novamente em ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+};
+
 export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
     const ai = getAI();
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
       contents: `Você é um tutor especializado. O aluno quer estudar sobre: "${subject}". 
       Forneça uma lista de tópicos principais com explicações claras, intuitivas e didáticas.
@@ -57,7 +84,7 @@ export const geminiService = {
           },
         },
       },
-    });
+    }));
 
     try {
       return JSON.parse(response.text || "[]");
@@ -69,7 +96,7 @@ export const geminiService = {
 
   async generateQuiz(subject: string, numQuestions: number): Promise<QuizQuestion[]> {
     const ai = getAI();
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
       contents: `Gere um simulado de ${numQuestions} questões sobre o tema: "${subject}".
       As questões devem ser de múltipla escolha (4 opções).
@@ -95,7 +122,7 @@ export const geminiService = {
           },
         },
       },
-    });
+    }));
 
     try {
       return JSON.parse(response.text || "[]");
@@ -107,7 +134,7 @@ export const geminiService = {
 
   async generateQuizFromText(userQuestions: string): Promise<QuizQuestion[]> {
     const ai = getAI();
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
       contents: `O usuário forneceu o seguinte texto contendo questões ou conteúdo para um simulado:
       "${userQuestions}"
@@ -138,7 +165,7 @@ export const geminiService = {
           },
         },
       },
-    });
+    }));
 
     try {
       return JSON.parse(response.text || "[]");
@@ -150,7 +177,7 @@ export const geminiService = {
 
   async generateQuizFromMedia(mediaItems: { base64Data: string, mimeType: string }[]): Promise<QuizQuestion[]> {
     const ai = getAI();
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
       contents: [
         {
@@ -193,7 +220,7 @@ export const geminiService = {
           },
         },
       },
-    });
+    }));
 
     try {
       return JSON.parse(response.text || "[]");
@@ -229,7 +256,7 @@ export const geminiService = {
       ${text ? `Conteúdo em texto: "${text}"` : ""}`
     });
 
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
       contents: [{ parts }],
       config: {
@@ -247,7 +274,7 @@ export const geminiService = {
           },
         },
       },
-    });
+    }));
 
     try {
       const results = JSON.parse(response.text || "[]");
