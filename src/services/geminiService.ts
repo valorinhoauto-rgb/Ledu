@@ -203,7 +203,7 @@ export const geminiService = {
     }
   },
 
-  async getQuickAnswer(text?: string, mediaItems?: { base64Data: string, mimeType: string }[]): Promise<{ answer: string, explanation: string }> {
+  async getQuickAnswer(text?: string, mediaItems?: { base64Data: string, mimeType: string }[]): Promise<{ answer: string, explanation: string }[]> {
     const ai = getAI();
     
     const parts: any[] = [];
@@ -219,11 +219,13 @@ export const geminiService = {
     }
     
     parts.push({
-      text: `Você é um assistente de estudos. O usuário enviou uma pergunta ou uma imagem de uma questão.
-      Analise o conteúdo (texto ou imagem) e forneça a resposta correta e uma explicação breve e didática.
+      text: `Você é um assistente de estudos. O usuário enviou uma ou mais perguntas (via texto ou imagem).
+      Analise todo o conteúdo fornecido. Se houver múltiplas questões ou dúvidas em diferentes arquivos ou no texto, identifique cada uma delas.
+      Para cada questão identificada, forneça a resposta correta e uma explicação breve e didática.
       
       IMPORTANTE: Se o conteúdo estiver em inglês e não for sobre o aprendizado de inglês, traduza para o português.
-      Retorne em formato JSON com os campos "answer" e "explanation".
+      Retorne SEMPRE um ARRAY de objetos JSON, mesmo que haja apenas uma pergunta.
+      Cada objeto deve ter os campos "answer" e "explanation".
       ${text ? `Conteúdo em texto: "${text}"` : ""}`
     });
 
@@ -234,21 +236,25 @@ export const geminiService = {
         thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            answer: { type: Type.STRING },
-            explanation: { type: Type.STRING },
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              answer: { type: Type.STRING },
+              explanation: { type: Type.STRING },
+            },
+            required: ["answer", "explanation"],
           },
-          required: ["answer", "explanation"],
         },
       },
     });
 
     try {
-      return JSON.parse(response.text || '{"answer": "Não foi possível identificar", "explanation": "Tente novamente com uma imagem mais clara."}');
+      const results = JSON.parse(response.text || "[]");
+      return Array.isArray(results) ? results : [results];
     } catch (e) {
       console.error("Erro ao obter resposta rápida", e);
-      return { answer: "Erro", explanation: "Ocorreu um erro ao processar sua pergunta." };
+      return [{ answer: "Erro", explanation: "Ocorreu um erro ao processar sua pergunta." }];
     }
   },
 };

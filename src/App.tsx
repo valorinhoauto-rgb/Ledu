@@ -43,7 +43,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Quick Answer Data
-  const [quickAnswer, setQuickAnswer] = useState<{ answer: string, explanation: string } | null>(null);
+  const [quickAnswers, setQuickAnswers] = useState<{ answer: string, explanation: string }[]>([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -128,7 +128,7 @@ export default function App() {
       }
       
       const result = await geminiService.getQuickAnswer(uploadText, mediaItems);
-      setQuickAnswer(result);
+      setQuickAnswers(result);
       setLoading(false);
       setState("QUICK_ANSWER_RESULT");
     } catch (error) {
@@ -167,7 +167,7 @@ export default function App() {
     setUserAnswers({});
     setUploadText("");
     setSelectedFiles([]);
-    setQuickAnswer(null);
+    setQuickAnswers([]);
   };
 
   return (
@@ -375,57 +375,66 @@ export default function App() {
           )}
 
           {/* QUICK ANSWER RESULT STATE */}
-          {state === "QUICK_ANSWER_RESULT" && quickAnswer && (
+          {state === "QUICK_ANSWER_RESULT" && quickAnswers.length > 0 && (
             <motion.div 
               key="quick-answer-result"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="max-w-2xl mx-auto space-y-8"
             >
-              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
-                <div className="bg-indigo-600 p-8 text-white">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="bg-white/20 p-2 rounded-lg">
-                      <CheckCircle2 className="w-6 h-6" />
-                    </div>
-                    <h2 className="text-2xl font-bold">Resposta Identificada</h2>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-sm p-6 rounded-2xl border border-white/20">
-                    <p className="text-xl font-bold leading-relaxed">{quickAnswer.answer}</p>
-                  </div>
-                </div>
+              <div className="text-center space-y-2">
+                <h2 className="text-3xl font-bold text-slate-900">Resultados Encontrados</h2>
+                <p className="text-slate-500">O Gemini analisou seus arquivos e encontrou {quickAnswers.length} {quickAnswers.length === 1 ? 'resposta' : 'respostas'}.</p>
+              </div>
 
-                <div className="p-8 space-y-6">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                      <HelpCircle className="w-5 h-5 text-indigo-600" />
-                      Explicação Didática
-                    </h3>
-                    <div className="prose prose-slate max-w-none">
-                      <ReactMarkdown>{quickAnswer.explanation}</ReactMarkdown>
+              <div className="space-y-6">
+                {quickAnswers.map((qa, idx) => (
+                  <div key={idx} className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
+                    <div className="bg-indigo-600 p-8 text-white">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-white/20 p-2 rounded-lg">
+                          <CheckCircle2 className="w-6 h-6" />
+                        </div>
+                        <h2 className="text-2xl font-bold">Questão {idx + 1}</h2>
+                      </div>
+                      <div className="bg-white/10 backdrop-blur-sm p-6 rounded-2xl border border-white/20">
+                        <p className="text-xl font-bold leading-relaxed">{qa.answer}</p>
+                      </div>
+                    </div>
+
+                    <div className="p-8 space-y-6">
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                          <HelpCircle className="w-5 h-5 text-indigo-600" />
+                          Explicação Didática
+                        </h3>
+                        <div className="prose prose-slate max-w-none">
+                          <ReactMarkdown>{qa.explanation}</ReactMarkdown>
+                        </div>
+                      </div>
                     </div>
                   </div>
+                ))}
+              </div>
 
-                  <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row gap-4">
-                    <button 
-                      onClick={() => {
-                        setUploadText("");
-                        setSelectedFiles([]);
-                        setQuickAnswer(null);
-                        setState("QUICK_ANSWER");
-                      }}
-                      className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
-                    >
-                      <RefreshCcw className="w-5 h-5" /> Outra Pergunta
-                    </button>
-                    <button 
-                      onClick={reset}
-                      className="flex-1 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-600 font-bold py-4 rounded-2xl transition-all"
-                    >
-                      Voltar ao Início
-                    </button>
-                  </div>
-                </div>
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={() => {
+                    setUploadText("");
+                    setSelectedFiles([]);
+                    setQuickAnswers([]);
+                    setState("QUICK_ANSWER");
+                  }}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+                >
+                  <RefreshCcw className="w-5 h-5" /> Outra Pergunta
+                </button>
+                <button 
+                  onClick={reset}
+                  className="flex-1 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-600 font-bold py-4 rounded-2xl transition-all"
+                >
+                  Voltar ao Início
+                </button>
               </div>
             </motion.div>
           )}
