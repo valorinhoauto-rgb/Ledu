@@ -16,10 +16,7 @@ import {
   FileText,
   File as FileIcon,
   Camera,
-  X,
-  Settings,
-  Key,
-  AlertTriangle
+  X
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { geminiService, type QuizQuestion, type StudyTopic } from "./services/geminiService";
@@ -44,25 +41,6 @@ export default function App() {
   const [uploadMethod, setUploadMethod] = useState<"TEXT" | "FILE">("TEXT");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // API Key State
-  const [showSettings, setShowSettings] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(localStorage.getItem("LEDU_API_KEY") || "");
-  const [hasKey, setHasKey] = useState(!!(localStorage.getItem("LEDU_API_KEY") || process.env.GEMINI_API_KEY));
-
-  const saveApiKey = () => {
-    if (apiKeyInput.trim()) {
-      localStorage.setItem("LEDU_API_KEY", apiKeyInput.trim());
-      setHasKey(true);
-      setShowSettings(false);
-      // Recarregar a página para garantir que o serviço pegue a nova chave
-      window.location.reload();
-    } else {
-      localStorage.removeItem("LEDU_API_KEY");
-      setHasKey(!!process.env.GEMINI_API_KEY);
-      setShowSettings(false);
-    }
-  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -184,41 +162,17 @@ export default function App() {
               {state !== "HOME" && (
                 <button 
                   onClick={reset}
-                  className="text-sm font-medium text-slate-500 hover:text-indigo-600 flex items-center gap-1 transition-colors hidden sm:flex"
+                  className="text-sm font-medium text-slate-500 hover:text-indigo-600 flex items-center gap-1 transition-colors"
                 >
                   <RefreshCcw className="w-4 h-4" />
                   Recomeçar
                 </button>
               )}
-              <button 
-                onClick={() => setShowSettings(true)}
-                className={cn(
-                  "p-2 rounded-xl transition-all relative",
-                  hasKey ? "text-slate-400 hover:bg-slate-100" : "text-amber-500 bg-amber-50 hover:bg-amber-100 animate-pulse"
-                )}
-                title="Configurações de API"
-              >
-                <Settings className="w-5 h-5" />
-                {!hasKey && <div className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-white" />}
-              </button>
             </div>
           </div>
         </header>
 
         <main className="max-w-4xl mx-auto px-6 py-12">
-          {!hasKey && state === "HOME" && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-amber-800 text-sm"
-            >
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <p>
-                <strong>Atenção:</strong> Nenhuma chave API detectada. Para o site funcionar no Netlify, 
-                clique no ícone de engrenagem e insira sua chave do Gemini.
-              </p>
-            </motion.div>
-          )}
         <AnimatePresence mode="wait">
           {/* HOME STATE */}
           {state === "HOME" && (
@@ -712,72 +666,6 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
-
-      {/* Settings Modal */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-6"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden"
-            >
-              <div className="p-8 space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-indigo-600" />
-                    Configurações
-                  </h3>
-                  <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                    <X className="w-5 h-5 text-slate-400" />
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                      <Key className="w-4 h-4 text-indigo-600" /> Gemini API Key
-                    </label>
-                    <input 
-                      type="password"
-                      placeholder="Cole sua chave AIza..."
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                    />
-                    <p className="text-[10px] text-slate-400 leading-relaxed">
-                      Sua chave fica salva apenas no seu navegador (localStorage). 
-                      Isso é necessário para o site funcionar em hospedagens gratuitas como o Netlify.
-                    </p>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={saveApiKey}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-indigo-100"
-                >
-                  Salvar e Atualizar
-                </button>
-                
-                <a 
-                  href="https://aistudio.google.com/app/apikey" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block text-center text-xs text-indigo-600 hover:underline"
-                >
-                  Onde consigo minha chave?
-                </a>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Loading Overlay */}
       <AnimatePresence>
