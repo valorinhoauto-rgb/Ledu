@@ -110,6 +110,8 @@ export const geminiService = {
       contents: `O usuário forneceu o seguinte texto contendo questões ou conteúdo para um simulado:
       "${userQuestions}"
       
+      IMPORTANTE: Se o conteúdo estiver em inglês e o tema não for especificamente sobre o aprendizado da língua inglesa, traduza o conteúdo para o português antes de gerar as questões. O simulado final deve estar sempre em português, a menos que o objetivo seja testar conhecimentos de inglês.
+
       Organize esse conteúdo em um simulado estruturado de múltipla escolha. 
       Se o texto já tiver questões, formate-as. Se for apenas conteúdo, crie questões baseadas nele.
       Retorne em formato JSON: uma lista de objetos com "id", "question", "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".`,
@@ -158,6 +160,9 @@ export const geminiService = {
             })),
             {
               text: `Analise os arquivos fornecidos (imagens ou PDFs) que contêm questões ou conteúdo educacional.
+              
+              IMPORTANTE: Se o conteúdo dos arquivos estiver em inglês e o tema não for especificamente sobre o aprendizado da língua inglesa, traduza o conteúdo para o português antes de gerar as questões. O simulado final deve estar sempre em português, a menos que o objetivo seja testar conhecimentos de inglês.
+
               Organize todo esse conteúdo em um simulado estruturado de múltipla escolha. 
               Retorne em formato JSON: uma lista de objetos com "id", "question", "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".`,
             },
