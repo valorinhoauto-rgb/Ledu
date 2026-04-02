@@ -1,6 +1,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// Função para obter a chave de forma dinâmica
+const getApiKey = () => {
+  return localStorage.getItem("LEDU_API_KEY") || 
+         (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : "") || 
+         "";
+};
+
+// Criamos uma função que retorna a instância do AI sempre atualizada
+const getAI = () => {
+  const key = getApiKey();
+  return new GoogleGenAI({ apiKey: key });
+};
 
 export interface QuizQuestion {
   id: number;
@@ -17,6 +28,7 @@ export interface StudyTopic {
 
 export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Você é um tutor especializado. O aluno quer estudar sobre: "${subject}". 
@@ -47,6 +59,7 @@ export const geminiService = {
   },
 
   async generateQuiz(subject: string, numQuestions: number): Promise<QuizQuestion[]> {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Gere um simulado de ${numQuestions} questões sobre o tema: "${subject}".
@@ -83,6 +96,7 @@ export const geminiService = {
   },
 
   async generateQuizFromText(userQuestions: string): Promise<QuizQuestion[]> {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `O usuário forneceu o seguinte texto contendo questões ou conteúdo para um simulado:
@@ -122,6 +136,7 @@ export const geminiService = {
   },
 
   async generateQuizFromMedia(mediaItems: { base64Data: string, mimeType: string }[]): Promise<QuizQuestion[]> {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [
