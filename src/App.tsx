@@ -155,7 +155,7 @@ export default function App() {
               <div className="bg-indigo-600 p-2 rounded-xl group-hover:scale-110 transition-transform">
                 <BookOpen className="text-white w-5 h-5" />
               </div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-800">Ledu</h1>
+              <h1 className="text-xl font-bold text-slate-800">Ledu</h1>
             </div>
             
             <div className="flex items-center gap-4">
@@ -184,7 +184,7 @@ export default function App() {
               className="text-center space-y-8"
             >
               <div className="space-y-4">
-                <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight">
+                <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900">
                   O que vamos aprender <span className="text-indigo-600">hoje?</span>
                 </h2>
                 <p className="text-slate-500 text-lg max-w-xl mx-auto">
@@ -682,7 +682,7 @@ export default function App() {
                 <div className="w-2 h-2 bg-indigo-600 rounded-full animate-ping" />
               </div>
             </div>
-            <h3 className="mt-8 text-2xl font-bold text-slate-900 tracking-tight">O Gemini está preparando tudo...</h3>
+            <h3 className="mt-8 text-2xl font-bold text-slate-900">O Gemini está preparando tudo...</h3>
             <p className="mt-2 text-slate-500 max-w-xs">Organizando tópicos e criando questões exclusivas para você.</p>
           </motion.div>
         )}
