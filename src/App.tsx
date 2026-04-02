@@ -49,6 +49,8 @@ export default function App() {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       setSelectedFiles(prev => [...prev, ...newFiles]);
+      // Reset the input value so the same file can be selected again if removed
+      e.target.value = "";
     }
   };
 
