@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 
 // Função para obter a chave de forma dinâmica
 const getApiKey = () => {
@@ -38,11 +38,12 @@ export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-flash-lite-preview",
       contents: `Você é um tutor especializado. O aluno quer estudar sobre: "${subject}". 
       Forneça uma lista de tópicos principais com explicações claras, intuitivas e didáticas.
       Retorne em formato JSON: uma lista de objetos com "title" e "content" (em markdown).`,
       config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -69,11 +70,12 @@ export const geminiService = {
   async generateQuiz(subject: string, numQuestions: number): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-flash-lite-preview",
       contents: `Gere um simulado de ${numQuestions} questões sobre o tema: "${subject}".
       As questões devem ser de múltipla escolha (4 opções).
       Retorne em formato JSON: uma lista de objetos com "id", "question", "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".`,
       config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -106,7 +108,7 @@ export const geminiService = {
   async generateQuizFromText(userQuestions: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-flash-lite-preview",
       contents: `O usuário forneceu o seguinte texto contendo questões ou conteúdo para um simulado:
       "${userQuestions}"
       
@@ -116,6 +118,7 @@ export const geminiService = {
       Se o texto já tiver questões, formate-as. Se for apenas conteúdo, crie questões baseadas nele.
       Retorne em formato JSON: uma lista de objetos com "id", "question", "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".`,
       config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -148,7 +151,7 @@ export const geminiService = {
   async generateQuizFromMedia(mediaItems: { base64Data: string, mimeType: string }[]): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-flash-lite-preview",
       contents: [
         {
           parts: [
@@ -170,6 +173,7 @@ export const geminiService = {
         },
       ],
       config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -224,9 +228,10 @@ export const geminiService = {
     });
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-flash-lite-preview",
       contents: [{ parts }],
       config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
