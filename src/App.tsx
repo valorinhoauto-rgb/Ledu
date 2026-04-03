@@ -735,18 +735,18 @@ export default function App() {
                 <div className="text-slate-400 font-medium">{subject}</div>
               </div>
 
-              <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-8">
-                <h3 className="text-2xl font-bold text-slate-800 leading-tight">
+              <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+                <h3 className="text-xl font-bold text-slate-800 leading-snug">
                   {questions[currentQuestionIndex].question}
                 </h3>
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {questions[currentQuestionIndex].options.map((option, idx) => (
                     <button 
                       key={idx}
                       onClick={() => handleAnswer(idx)}
                       className={cn(
-                        "w-full p-6 rounded-2xl text-left transition-all border-2 flex items-center gap-4 group",
+                        "w-full p-4 rounded-2xl text-left transition-all border-2 flex items-center gap-4 group",
                         userAnswers[currentQuestionIndex] === idx 
                           ? "bg-indigo-50 border-indigo-600 text-indigo-900" 
                           : "bg-white border-slate-100 hover:border-indigo-200 text-slate-600"
@@ -766,7 +766,17 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex justify-between items-center">
+                {currentQuestionIndex > 0 ? (
+                  <button 
+                    onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
+                    className="text-slate-400 hover:text-indigo-600 font-bold py-4 flex items-center gap-2 transition-all group"
+                  >
+                    <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+                    Anterior
+                  </button>
+                ) : <div />}
+                
                 <button 
                   onClick={nextQuestion}
                   disabled={userAnswers[currentQuestionIndex] === undefined}
