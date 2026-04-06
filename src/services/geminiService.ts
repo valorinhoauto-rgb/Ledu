@@ -21,14 +21,6 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey: key });
 };
 
-export interface QuizQuestion {
-  id: number;
-  question: string;
-  options: string[];
-  correctAnswer: number; // index
-  explanation: string;
-}
-
 export interface StudyTopic {
   title: string;
   content: string;
@@ -60,6 +52,23 @@ const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3, delay = 2000):
   }
   throw lastError;
 };
+
+export type QuestionType = "MULTIPLE_CHOICE" | "OPEN_ENDED";
+
+export interface QuizQuestion {
+  id: number;
+  type: QuestionType;
+  question: string;
+  options?: string[]; // Only for MULTIPLE_CHOICE
+  correctAnswer?: number; // Only for MULTIPLE_CHOICE
+  explanation: string;
+  suggestedAnswer?: string; // For OPEN_ENDED
+}
+
+export interface EvaluationResult {
+  score: number; // 0 to 100
+  feedback: string;
+}
 
 export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
@@ -94,13 +103,19 @@ export const geminiService = {
     }
   },
 
-  async generateQuiz(subject: string, numQuestions: number): Promise<QuizQuestion[]> {
+  async generateQuiz(subject: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
-      contents: `Gere um simulado de ${numQuestions} questões sobre o tema: "${subject}".
-      As questões devem ser de múltipla escolha (4 opções).
-      Retorne em formato JSON: uma lista de objetos com "id", "question", "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".`,
+      contents: `Gere um simulado completo sobre o tema: "${subject}".
+      O simulado deve conter:
+      1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE) com 4 opções cada.
+      2. 6 questões discursivas (tipo OPEN_ENDED) para que o aluno escolha 3 para responder.
+      
+      Para as questões de múltipla escolha, forneça "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".
+      Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
+      
+      Retorne em formato JSON: uma lista de objetos com "id", "type" ("MULTIPLE_CHOICE" ou "OPEN_ENDED"), "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
       config: {
         thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
@@ -110,15 +125,17 @@ export const geminiService = {
             type: Type.OBJECT,
             properties: {
               id: { type: Type.NUMBER },
+              type: { type: Type.STRING, enum: ["MULTIPLE_CHOICE", "OPEN_ENDED"] },
               question: { type: Type.STRING },
               options: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
               },
               correctAnswer: { type: Type.NUMBER },
+              suggestedAnswer: { type: Type.STRING },
               explanation: { type: Type.STRING },
             },
-            required: ["id", "question", "options", "correctAnswer", "explanation"],
+            required: ["id", "type", "question", "explanation"],
           },
         },
       },
@@ -132,18 +149,53 @@ export const geminiService = {
     }
   },
 
+  async evaluateOpenAnswer(question: string, suggestedAnswer: string, userAnswer: string): Promise<EvaluationResult> {
+    const ai = getAI();
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3.1-flash-lite-preview",
+      contents: `Avalie a resposta do aluno para a seguinte questão discursiva:
+      Questão: "${question}"
+      Resposta Modelo: "${suggestedAnswer}"
+      Resposta do Aluno: "${userAnswer}"
+      
+      Atribua uma nota de 0 a 100 baseada na precisão e completude em relação à resposta modelo.
+      Forneça um feedback construtivo em português.
+      Retorne em formato JSON com os campos "score" (número) e "feedback" (string).`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            score: { type: Type.NUMBER },
+            feedback: { type: Type.STRING },
+          },
+          required: ["score", "feedback"],
+        },
+      },
+    }));
+
+    try {
+      return JSON.parse(response.text || '{"score": 0, "feedback": "Erro na avaliação"}');
+    } catch (e) {
+      console.error("Erro ao avaliar resposta", e);
+      return { score: 0, feedback: "Erro ao processar avaliação." };
+    }
+  },
+
   async generateQuizFromText(userQuestions: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
-      contents: `O usuário forneceu o seguinte texto contendo questões ou conteúdo para um simulado:
+      contents: `O usuário forneceu o seguinte conteúdo para um simulado:
       "${userQuestions}"
       
-      IMPORTANTE: Se o conteúdo estiver em inglês e o tema não for especificamente sobre o aprendizado da língua inglesa, traduza o conteúdo para o português antes de gerar as questões. O simulado final deve estar sempre em português, a menos que o objetivo seja testar conhecimentos de inglês.
-
-      Organize esse conteúdo em um simulado estruturado de múltipla escolha. 
-      Se o texto já tiver questões, formate-as. Se for apenas conteúdo, crie questões baseadas nele.
-      Retorne em formato JSON: uma lista de objetos com "id", "question", "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".`,
+      Gere um simulado completo baseado nesse conteúdo:
+      1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE).
+      2. 6 questões discursivas (tipo OPEN_ENDED).
+      
+      Traduza para o português se necessário.
+      Retorne em formato JSON: uma lista de objetos com "id", "type", "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
       config: {
         thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
@@ -153,15 +205,17 @@ export const geminiService = {
             type: Type.OBJECT,
             properties: {
               id: { type: Type.NUMBER },
+              type: { type: Type.STRING, enum: ["MULTIPLE_CHOICE", "OPEN_ENDED"] },
               question: { type: Type.STRING },
               options: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
               },
               correctAnswer: { type: Type.NUMBER },
+              suggestedAnswer: { type: Type.STRING },
               explanation: { type: Type.STRING },
             },
-            required: ["id", "question", "options", "correctAnswer", "explanation"],
+            required: ["id", "type", "question", "explanation"],
           },
         },
       },
@@ -189,12 +243,12 @@ export const geminiService = {
               },
             })),
             {
-              text: `Analise os arquivos fornecidos (imagens ou PDFs) que contêm questões ou conteúdo educacional.
+              text: `Analise os arquivos fornecidos e gere um simulado completo:
+              1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE).
+              2. 6 questões discursivas (tipo OPEN_ENDED).
               
-              IMPORTANTE: Se o conteúdo dos arquivos estiver em inglês e o tema não for especificamente sobre o aprendizado da língua inglesa, traduza o conteúdo para o português antes de gerar as questões. O simulado final deve estar sempre em português, a menos que o objetivo seja testar conhecimentos de inglês.
-
-              Organize todo esse conteúdo em um simulado estruturado de múltipla escolha. 
-              Retorne em formato JSON: uma lista de objetos com "id", "question", "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".`,
+              Traduza para o português se necessário.
+              Retorne em formato JSON: uma lista de objetos com "id", "type", "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
             },
           ],
         },
@@ -208,15 +262,17 @@ export const geminiService = {
             type: Type.OBJECT,
             properties: {
               id: { type: Type.NUMBER },
+              type: { type: Type.STRING, enum: ["MULTIPLE_CHOICE", "OPEN_ENDED"] },
               question: { type: Type.STRING },
               options: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
               },
               correctAnswer: { type: Type.NUMBER },
+              suggestedAnswer: { type: Type.STRING },
               explanation: { type: Type.STRING },
             },
-            required: ["id", "question", "options", "correctAnswer", "explanation"],
+            required: ["id", "type", "question", "explanation"],
           },
         },
       },
