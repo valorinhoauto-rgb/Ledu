@@ -178,11 +178,12 @@ export default function App() {
     
     const mcScore = mcCorrect * 10; // 10 points each, max 100
     
+    const openScores = Object.values(evaluations).map(e => e.score).sort((a, b) => b - a);
+    const top3OpenScores = openScores.slice(0, 3);
+    
     let openTotalScore = 0;
-    let openAnsweredCount = 0;
-    Object.values(evaluations).forEach(evalRes => {
-      openTotalScore += (evalRes.score / 100) * 33.33;
-      openAnsweredCount++;
+    top3OpenScores.forEach(score => {
+      openTotalScore += (score / 100) * 33.33;
     });
     
     const openScore = Math.min(100, openTotalScore); // Max 100 (approx 3 * 33.33)
@@ -195,7 +196,7 @@ export default function App() {
       finalScore,
       mcCorrect,
       mcTotal: mcQuestions.length,
-      openAnswered: openAnsweredCount
+      openAnswered: Object.keys(evaluations).length
     };
   };
 
@@ -884,7 +885,10 @@ export default function App() {
                   <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                     <div className="text-3xl font-black text-indigo-600">{calculateScore().openScore}/100</div>
                     <div className="text-slate-500 font-bold text-sm uppercase tracking-wider">Nota Discursiva</div>
-                    <p className="text-xs text-slate-400 mt-1">{calculateScore().openAnswered} questões respondidas</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {calculateScore().openAnswered} questões respondidas
+                      <span className="block text-[10px] text-indigo-400 font-medium">Contando as 3 melhores notas</span>
+                    </p>
                   </div>
                   <div className="bg-indigo-600 p-6 rounded-3xl shadow-lg shadow-indigo-100 text-white">
                     <div className="text-4xl font-black">{calculateScore().finalScore}</div>
