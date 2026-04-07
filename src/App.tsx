@@ -989,7 +989,7 @@ export default function App() {
                         <div className="p-8 space-y-6">
                           <p className="font-bold text-slate-800 text-lg">{q.question}</p>
                           
-                          {answered && (
+                          {answered ? (
                             <div className="space-y-4">
                               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                 <h5 className="text-xs font-bold text-slate-400 uppercase mb-2">Sua Resposta:</h5>
@@ -1006,6 +1006,26 @@ export default function App() {
                                   <CheckCircle2 className="w-4 h-4" /> Feedback do Gemini
                                 </h4>
                                 <p className="text-indigo-50 text-sm leading-relaxed">{evaluation?.feedback}</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 space-y-4">
+                                <div className="flex items-center gap-2 text-indigo-900">
+                                  <BookOpen className="w-5 h-5" />
+                                  <h5 className="font-bold">Guia de Estudo</h5>
+                                </div>
+                                <p className="text-indigo-800/80 text-sm leading-relaxed">
+                                  Esta questão não foi respondida. Para facilitar seus estudos, veja a resposta modelo esperada:
+                                </p>
+                                <div className="p-5 bg-white rounded-2xl border border-indigo-100 shadow-sm">
+                                  <h6 className="text-xs font-bold text-indigo-400 uppercase mb-2">Resposta Modelo:</h6>
+                                  <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{q.suggestedAnswer}</p>
+                                </div>
+                                <div className="space-y-1">
+                                  <h6 className="text-xs font-bold text-indigo-400 uppercase">Explicação/Critérios:</h6>
+                                  <p className="text-indigo-800/70 text-xs italic leading-relaxed">{q.explanation}</p>
+                                </div>
                               </div>
                             </div>
                           )}
