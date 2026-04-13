@@ -791,9 +791,13 @@ export default function App() {
               </div>
 
               <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
-                <h3 className="text-xl font-bold text-slate-800 leading-snug">
-                  {questions[currentQuestionIndex].question}
-                </h3>
+                <div className={cn(
+                  "font-bold text-slate-800 leading-snug prose prose-slate max-w-none",
+                  questions[currentQuestionIndex].question.length > 400 ? "text-base" : 
+                  questions[currentQuestionIndex].question.length > 200 ? "text-lg" : "text-xl"
+                )}>
+                  <ReactMarkdown>{questions[currentQuestionIndex].question}</ReactMarkdown>
+                </div>
 
                 {questions[currentQuestionIndex].type === "MULTIPLE_CHOICE" ? (
                   <div className="space-y-3">
@@ -929,7 +933,13 @@ export default function App() {
                           )}
                         </div>
                         <div className="p-8 space-y-6">
-                          <p className="font-bold text-slate-800 text-lg">{q.question}</p>
+                          <div className={cn(
+                            "font-bold text-slate-800 leading-snug prose prose-slate max-w-none",
+                            q.question.length > 400 ? "text-base" : 
+                            q.question.length > 200 ? "text-lg" : "text-xl"
+                          )}>
+                            <ReactMarkdown>{q.question}</ReactMarkdown>
+                          </div>
                           
                           <div className="space-y-3">
                             {q.options?.map((opt, optIdx) => {
@@ -987,7 +997,13 @@ export default function App() {
                           )}
                         </div>
                         <div className="p-8 space-y-6">
-                          <p className="font-bold text-slate-800 text-lg">{q.question}</p>
+                          <div className={cn(
+                            "font-bold text-slate-800 leading-snug prose prose-slate max-w-none",
+                            q.question.length > 400 ? "text-base" : 
+                            q.question.length > 200 ? "text-lg" : "text-xl"
+                          )}>
+                            <ReactMarkdown>{q.question}</ReactMarkdown>
+                          </div>
                           
                           {answered ? (
                             <div className="space-y-4">
