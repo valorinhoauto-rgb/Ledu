@@ -86,7 +86,7 @@ export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: `Você é um tutor especializado. O aluno quer estudar sobre: "${subject}". 
       Forneça uma lista de tópicos principais com explicações claras, intuitivas e didáticas.
       Retorne em formato JSON: uma lista de objetos com "title" e "content" (em markdown).`,
@@ -117,7 +117,7 @@ export const geminiService = {
   async generateQuiz(subject: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: `Gere um simulado completo sobre o tema: "${subject}".
       O simulado deve conter EXATAMENTE:
       1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE) com 4 opções cada.
@@ -167,7 +167,7 @@ export const geminiService = {
   async evaluateOpenAnswer(question: string, suggestedAnswer: string, userAnswer: string): Promise<EvaluationResult> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: `Avalie a resposta do aluno para a seguinte questão discursiva:
       Questão: "${question}"
       Resposta Modelo: "${suggestedAnswer}"
@@ -200,7 +200,7 @@ export const geminiService = {
   async generateQuizFromText(userQuestions: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: `O usuário forneceu o seguinte conteúdo para um simulado:
       "${userQuestions}"
       
@@ -249,7 +249,7 @@ export const geminiService = {
   async generateQuizFromMedia(mediaItems: { base64Data: string, mimeType: string }[]): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: [
         {
           parts: [
@@ -333,7 +333,7 @@ export const geminiService = {
     });
 
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: [{ parts }],
       config: {
         responseMimeType: "application/json",
