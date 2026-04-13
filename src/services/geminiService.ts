@@ -108,7 +108,7 @@ export const geminiService = {
     const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
       contents: `Gere um simulado completo sobre o tema: "${subject}".
-      O simulado deve conter:
+      O simulado deve conter EXATAMENTE:
       1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE) com 4 opções cada.
       2. 6 questões discursivas (tipo OPEN_ENDED) para que o aluno escolha 3 para responder.
       
@@ -190,9 +190,12 @@ export const geminiService = {
       contents: `O usuário forneceu o seguinte conteúdo para um simulado:
       "${userQuestions}"
       
-      Gere um simulado completo baseado nesse conteúdo:
-      1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE).
-      2. 6 questões discursivas (tipo OPEN_ENDED).
+      Gere um simulado completo baseado ESTRITAMENTE nesse conteúdo seguindo estas regras:
+      1. O simulado deve ter EXATAMENTE 10 questões de múltipla escolha (MULTIPLE_CHOICE) e 6 questões discursivas (OPEN_ENDED).
+      2. Se o conteúdo contiver mais de 10 questões de múltipla escolha, selecione as 10 mais relevantes e com maior probabilidade de cair em uma prova oficial.
+      3. Se o conteúdo contiver questões prontas, siga ESTRITAMENTE as perguntas e alternativas fornecidas (não parafraseie, pois elas costumam se repetir exatamente na prova).
+      4. Se não houver questões discursivas no conteúdo, crie 6 questões discursivas baseadas nos temas abordados nas questões de múltipla escolha fornecidas.
+      5. Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
       
       Traduza para o português se necessário.
       Retorne em formato JSON: uma lista de objetos com "id", "type", "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
@@ -243,9 +246,12 @@ export const geminiService = {
               },
             })),
             {
-              text: `Analise os arquivos fornecidos e gere um simulado completo:
-              1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE).
-              2. 6 questões discursivas (tipo OPEN_ENDED).
+              text: `Analise os arquivos fornecidos e gere um simulado completo seguindo estas regras:
+              1. O simulado deve ter EXATAMENTE 10 questões de múltipla escolha (MULTIPLE_CHOICE) e 6 questões discursivas (OPEN_ENDED).
+              2. Se os arquivos contiverem mais de 10 questões de múltipla escolha, selecione as 10 mais relevantes e com maior probabilidade de cair em uma prova oficial.
+              3. Se houver questões prontas nos arquivos, siga ESTRITAMENTE as perguntas e alternativas fornecidas (não parafraseie, pois elas costumam se repetir exatamente na prova).
+              4. Se não houver questões discursivas nos arquivos, crie 6 questões discursivas baseadas nos temas abordados nas questões de múltipla escolha identificadas.
+              5. Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
               
               Traduza para o português se necessário.
               Retorne em formato JSON: uma lista de objetos com "id", "type", "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
