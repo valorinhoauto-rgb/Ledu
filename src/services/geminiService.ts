@@ -122,6 +122,11 @@ export const geminiService = {
       1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE) com 4 opções cada.
       2. 6 questões discursivas (tipo OPEN_ENDED) para que o aluno escolha 3 para responder.
       
+      REGRAS DE FORMATAÇÃO:
+      - Use quebras de linha duplas entre parágrafos.
+      - Se a questão tiver itens (ex: I, II, III ou a, b, c), use listas ou quebras de linha claras para que não fiquem amontoados.
+      - Garanta que o texto seja legível e bem estruturado.
+      
       Para as questões de múltipla escolha, forneça "options" (array de strings), "correctAnswer" (índice 0-3) e "explanation".
       Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
       
@@ -203,9 +208,10 @@ export const geminiService = {
       Gere um simulado completo baseado ESTRITAMENTE nesse conteúdo seguindo estas regras:
       1. O simulado deve ter EXATAMENTE 10 questões de múltipla escolha (MULTIPLE_CHOICE) e 6 questões discursivas (OPEN_ENDED).
       2. Se o conteúdo contiver mais de 10 questões de múltipla escolha, selecione as 10 mais relevantes e com maior probabilidade de cair em uma prova oficial.
-      3. Se o conteúdo contiver questões prontas, siga ESTRITAMENTE as perguntas e alternativas fornecidas (não parafraseie, pois elas costumam se repetir exatamente na prova).
-      4. Se não houver questões discursivas no conteúdo, crie 6 questões discursivas baseadas nos temas abordados nas questões de múltipla escolha fornecidas.
-      5. Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
+      3. Se o conteúdo contiver questões prontas, siga ESTRITAMENTE as perguntas e alternativas fornecidas.
+      4. IMPORTANTE: Preserve e MELHORE a formatação. Use quebras de linha claras (\n\n) entre sentenças ou tópicos para evitar blocos de texto densos. Se houver itens numerados ou com letras, coloque cada um em uma nova linha.
+      5. Se não houver questões discursivas no conteúdo, crie 6 questões discursivas baseadas nos temas abordados nas questões de múltipla escolha fornecidas.
+      6. Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
       
       Traduza para o português se necessário.
       Retorne em formato JSON: uma lista de objetos com "id", "type", "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
@@ -259,9 +265,10 @@ export const geminiService = {
               text: `Analise os arquivos fornecidos e gere um simulado completo seguindo estas regras:
               1. O simulado deve ter EXATAMENTE 10 questões de múltipla escolha (MULTIPLE_CHOICE) e 6 questões discursivas (OPEN_ENDED).
               2. Se os arquivos contiverem mais de 10 questões de múltipla escolha, selecione as 10 mais relevantes e com maior probabilidade de cair em uma prova oficial.
-              3. Se houver questões prontas nos arquivos, siga ESTRITAMENTE as perguntas e alternativas fornecidas (não parafraseie, pois elas costumam se repetir exatamente na prova).
-              4. Se não houver questões discursivas nos arquivos, crie 6 questões discursivas baseadas nos temas abordados nas questões de múltipla escolha identificadas.
-              5. Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
+              3. Se houver questões prontas nos arquivos, siga ESTRITAMENTE as perguntas e alternativas fornecidas.
+              4. IMPORTANTE: Melhore a legibilidade do texto extraído. Use quebras de linha duplas (\n\n) para separar parágrafos e tópicos. Se a questão tiver itens (I, II, III...), coloque cada um em sua própria linha.
+              5. Se não houver questões discursivas nos arquivos, crie 6 questões discursivas baseadas nos temas abordados nas questões de múltipla escolha identificadas.
+              6. Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
               
               Traduza para o português se necessário.
               Retorne em formato JSON: uma lista de objetos com "id", "type", "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,

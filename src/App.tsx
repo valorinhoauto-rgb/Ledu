@@ -800,7 +800,7 @@ export default function App() {
 
               <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
                 <div className={cn(
-                  "font-bold text-slate-800 leading-snug prose prose-slate max-w-none",
+                  "font-bold text-slate-800 leading-snug prose prose-slate max-w-none whitespace-pre-wrap",
                   questions[currentQuestionIndex].question.length > 400 ? "text-base" : 
                   questions[currentQuestionIndex].question.length > 200 ? "text-lg" : "text-xl"
                 )}>
@@ -942,7 +942,7 @@ export default function App() {
                         </div>
                         <div className="p-8 space-y-6">
                           <div className={cn(
-                            "font-bold text-slate-800 leading-snug prose prose-slate max-w-none",
+                            "font-bold text-slate-800 leading-snug prose prose-slate max-w-none whitespace-pre-wrap",
                             q.question.length > 400 ? "text-base" : 
                             q.question.length > 200 ? "text-lg" : "text-xl"
                           )}>
@@ -1006,7 +1006,7 @@ export default function App() {
                         </div>
                         <div className="p-8 space-y-6">
                           <div className={cn(
-                            "font-bold text-slate-800 leading-snug prose prose-slate max-w-none",
+                            "font-bold text-slate-800 leading-snug prose prose-slate max-w-none whitespace-pre-wrap",
                             q.question.length > 400 ? "text-base" : 
                             q.question.length > 200 ? "text-lg" : "text-xl"
                           )}>
