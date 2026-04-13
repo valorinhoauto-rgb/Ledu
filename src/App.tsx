@@ -110,9 +110,14 @@ export default function App() {
       setEvaluations({});
       setLoading(false);
       setState("QUIZ");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao iniciar simulado:", error);
       setLoading(false);
+      if (error?.message?.includes("API key")) {
+        alert("Chave de API não encontrada! Se você estiver no Netlify, configure a variável VITE_GEMINI_API_KEY. Se estiver no AI Studio, use o painel de Secrets.");
+      } else {
+        alert("Ocorreu um erro ao gerar o simulado. Verifique sua conexão e a chave de API.");
+      }
     }
   };
 
@@ -135,9 +140,12 @@ export default function App() {
       setQuickAnswers(result);
       setLoading(false);
       setState("QUICK_ANSWER_RESULT");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao obter resposta rápida:", error);
       setLoading(false);
+      if (error?.message?.includes("API key")) {
+        alert("Chave de API não encontrada! Configure a variável de ambiente necessária.");
+      }
     }
   };
 
