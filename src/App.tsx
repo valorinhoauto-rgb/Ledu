@@ -225,7 +225,7 @@ export default function App() {
               <div className="bg-indigo-600 p-2 rounded-xl group-hover:scale-110 transition-transform">
                 <BookOpen className="text-white w-5 h-5" />
               </div>
-              <h1 className="text-xl font-bold text-slate-800">Ledu</h1>
+              <h1 className="text-xl font-bold text-slate-800">Lema</h1>
             </div>
             
             <div className="flex items-center gap-4">
@@ -1094,7 +1094,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="py-12 text-center text-slate-400 text-sm">
-        <p>© 2026 Ledu • Potencializado por Inteligência Artificial</p>
+        <p>© 2026 Lema • Potencializado por Inteligência Artificial</p>
       </footer>
     </div>
   );
