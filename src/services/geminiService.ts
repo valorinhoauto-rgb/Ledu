@@ -36,8 +36,8 @@ export interface StudyTopic {
   content: string;
 }
 
-// Função auxiliar para lidar com retentativas em caso de erro de cota (429)
-const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3, delay = 2000): Promise<T> => {
+// Função auxiliar para lidar com retentativas em caso de erro de cota (429) ou instabilidade (503/500)
+const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 4, delay = 3000): Promise<T> => {
   let lastError: any;
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -84,12 +84,11 @@ export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-1.5-flash",
       contents: `Você é um tutor especializado. O aluno quer estudar sobre: "${subject}". 
       Forneça uma lista de tópicos principais com explicações claras, intuitivas e didáticas.
       Retorne em formato JSON: uma lista de objetos com "title" e "content" (em markdown).`,
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -116,7 +115,7 @@ export const geminiService = {
   async generateQuiz(subject: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-1.5-flash",
       contents: `Gere um simulado completo sobre o tema: "${subject}".
       O simulado deve conter EXATAMENTE:
       1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE) com 4 opções cada.
@@ -132,7 +131,6 @@ export const geminiService = {
       
       Retorne em formato JSON: uma lista de objetos com "id", "type" ("MULTIPLE_CHOICE" ou "OPEN_ENDED"), "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -167,7 +165,7 @@ export const geminiService = {
   async evaluateOpenAnswer(question: string, suggestedAnswer: string, userAnswer: string): Promise<EvaluationResult> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-1.5-flash",
       contents: `Avalie a resposta do aluno para a seguinte questão discursiva:
       Questão: "${question}"
       Resposta Modelo: "${suggestedAnswer}"
@@ -177,7 +175,6 @@ export const geminiService = {
       Forneça um feedback construtivo em português.
       Retorne em formato JSON com os campos "score" (número) e "feedback" (string).`,
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -201,7 +198,7 @@ export const geminiService = {
   async generateQuizFromText(userQuestions: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-1.5-flash",
       contents: `O usuário forneceu o seguinte conteúdo para um simulado:
       "${userQuestions}"
       
@@ -216,7 +213,6 @@ export const geminiService = {
       Traduza para o português se necessário.
       Retorne em formato JSON: uma lista de objetos com "id", "type", "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -251,7 +247,7 @@ export const geminiService = {
   async generateQuizFromMedia(mediaItems: { base64Data: string, mimeType: string }[]): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-1.5-flash",
       contents: [
         {
           parts: [
@@ -277,7 +273,6 @@ export const geminiService = {
         },
       ],
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -336,10 +331,9 @@ export const geminiService = {
     });
 
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-1.5-flash",
       contents: [{ parts }],
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
