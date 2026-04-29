@@ -16,13 +16,21 @@ import {
   FileText,
   File as FileIcon,
   Camera,
-  X
+  X,
+  Download,
+  Printer,
+  MessageSquare,
+  Bug,
+  AlertCircle
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { geminiService, type QuizQuestion, type StudyTopic, type EvaluationResult } from "./services/geminiService";
+import { jsPDF } from "jspdf";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "./lib/firebase";
+import { geminiService, type QuizQuestion, type StudyTopic, type EvaluationResult, type Assignment } from "./services/geminiService";
 import { cn } from "./lib/utils";
 
-type AppState = "HOME" | "CHOICE" | "STUDY" | "QUIZ_SETUP" | "QUIZ" | "RESULTS" | "QUICK_ANSWER" | "QUICK_ANSWER_RESULT";
+type AppState = "HOME" | "CHOICE" | "STUDY" | "QUIZ_SETUP" | "QUIZ" | "RESULTS" | "QUICK_ANSWER" | "QUICK_ANSWER_RESULT" | "ASSIGNMENT" | "ASSIGNMENT_RESULT";
 
 export default function App() {
   const [state, setState] = useState<AppState>("HOME");
@@ -46,6 +54,38 @@ export default function App() {
 
   // Quick Answer Data
   const [quickAnswers, setQuickAnswers] = useState<{ answer: string, explanation: string }[]>([]);
+
+  // Assignment Data
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
+
+  // Feedback State
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<"suggestion" | "bug">("suggestion");
+  const [feedbackContent, setFeedbackContent] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+  const handleSubmitFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feedbackContent.trim()) return;
+
+    setIsSubmittingFeedback(true);
+    try {
+      await addDoc(collection(db, "feedback"), {
+        type: feedbackType,
+        content: feedbackContent,
+        createdAt: serverTimestamp(),
+        status: "pending"
+      });
+      alert("Obrigado pelo seu feedback! Ele foi enviado com sucesso.");
+      setFeedbackContent("");
+      setShowFeedbackModal(false);
+    } catch (error) {
+      console.error("Erro ao enviar feedback:", error);
+      alert("Ocorreu um erro ao enviar seu feedback. Tente novamente mais tarde.");
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -149,6 +189,100 @@ export default function App() {
     }
   };
 
+  const startAssignment = async () => {
+    setLoading(true);
+    try {
+      let mediaItems: { base64Data: string, mimeType: string }[] | undefined;
+      if (selectedFiles.length > 0) {
+        mediaItems = await Promise.all(selectedFiles.map(async (file) => ({
+          base64Data: await fileToBase64(file),
+          mimeType: file.type
+        })));
+      }
+      
+      const result = await geminiService.generateAssignment(uploadText, mediaItems);
+      setAssignment(result);
+      setLoading(false);
+      setState("ASSIGNMENT_RESULT");
+    } catch (error: any) {
+      console.error("Erro ao gerar trabalho:", error);
+      setLoading(false);
+      alert("Ocorreu um erro ao gerar seu trabalho. Tente novamente.");
+    }
+  };
+
+  const exportToPDF = () => {
+    if (!assignment) return;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    const contentWidth = pageWidth - 2 * margin;
+    let y = 30;
+
+    // Simple markdown stripper
+    const cleanText = (text: string) => {
+      return text.replace(/[*_#`~]/g, '').replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
+    };
+
+    const addText = (text: string, fontSize: number, style: 'normal' | 'bold' = 'normal') => {
+      doc.setFontSize(fontSize);
+      doc.setFont("helvetica", style);
+      const lines = doc.splitTextToSize(cleanText(text), contentWidth);
+      
+      lines.forEach((line: string) => {
+        if (y > 280) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(line, margin, y);
+        y += fontSize * 0.5;
+      });
+      y += 4;
+    };
+
+    // Header
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Trabalho Gerado pelo Lema AI", margin, 15);
+    doc.text(new Date().toLocaleDateString('pt-BR'), pageWidth - margin, 15, { align: "right" });
+    doc.line(margin, 17, pageWidth - margin, 17);
+
+    // Title
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    const titleLines = doc.splitTextToSize(assignment.title, contentWidth);
+    titleLines.forEach((line: string) => {
+       doc.text(line, pageWidth / 2, y, { align: "center" });
+       y += 12;
+    });
+    y += 10;
+
+    // Introduction
+    addText("1. Introdução", 16, "bold");
+    addText(assignment.introduction, 12, "normal");
+
+    // Sections
+    assignment.sections.forEach((section, idx) => {
+      addText(`${idx + 2}. ${section.title}`, 14, "bold");
+      addText(section.content, 12, "normal");
+    });
+
+    // Conclusion
+    addText(`${assignment.sections.length + 2}. Conclusão`, 16, "bold");
+    addText(assignment.conclusion, 12, "normal");
+
+    // References
+    if (assignment.references.length > 0) {
+      addText("Referências Bibliográficas", 16, "bold");
+      assignment.references.forEach((ref) => {
+        addText(ref, 10, "normal");
+      });
+    }
+
+    doc.save(`${assignment.title.toLowerCase().replace(/\s+/g, '-')}.pdf`);
+  };
+
   const nextQuestion = async () => {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
@@ -219,6 +353,7 @@ export default function App() {
     setUploadText("");
     setSelectedFiles([]);
     setQuickAnswers([]);
+    setAssignment(null);
   };
 
   return (
@@ -301,18 +436,33 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button 
-                    onClick={() => {
-                      reset();
-                      setState("QUICK_ANSWER");
-                    }}
-                    className="mt-6 w-full bg-white border-2 border-slate-200 hover:border-indigo-500 text-slate-700 font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-3 group"
-                  >
-                    <div className="bg-indigo-50 p-2 rounded-lg group-hover:bg-indigo-600 transition-colors">
-                      <HelpCircle className="w-5 h-5 text-indigo-600 group-hover:text-white" />
-                    </div>
-                    Resposta Rápida
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                    <button 
+                      onClick={() => {
+                        reset();
+                        setState("QUICK_ANSWER");
+                      }}
+                      className="w-full bg-white border-2 border-slate-200 hover:border-indigo-500 text-slate-700 font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-3 group"
+                    >
+                      <div className="bg-indigo-50 p-2 rounded-lg group-hover:bg-indigo-600 transition-colors">
+                        <HelpCircle className="w-5 h-5 text-indigo-600 group-hover:text-white" />
+                      </div>
+                      Resposta Rápida
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        reset();
+                        setState("ASSIGNMENT");
+                      }}
+                      className="w-full bg-white border-2 border-slate-200 hover:border-emerald-500 text-slate-700 font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-3 group"
+                    >
+                      <div className="bg-emerald-50 p-2 rounded-lg group-hover:bg-emerald-600 transition-colors">
+                        <FileText className="w-5 h-5 text-emerald-600 group-hover:text-white" />
+                      </div>
+                      Realizar Trabalho
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -479,6 +629,229 @@ export default function App() {
                   className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
                 >
                   <RefreshCcw className="w-5 h-5" /> Outra Pergunta
+                </button>
+                <button 
+                  onClick={reset}
+                  className="flex-1 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-600 font-bold py-4 rounded-2xl transition-all"
+                >
+                  Voltar ao Início
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ASSIGNMENT SETUP STATE */}
+          {state === "ASSIGNMENT" && (
+            <motion.div 
+              key="assignment-setup"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="max-w-2xl mx-auto space-y-8"
+            >
+              <div className="text-center space-y-2">
+                <div className="bg-emerald-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <FileText className="text-emerald-600 w-8 h-8" />
+                </div>
+                <h2 className="text-3xl font-bold text-slate-900">Realizar Trabalho</h2>
+                <p className="text-slate-500">Suba o roteiro, PDF ou explique o que precisa ser feito.</p>
+              </div>
+
+              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button 
+                    onClick={() => setUploadMethod("TEXT")}
+                    className={cn(
+                      "flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2",
+                      uploadMethod === "TEXT" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    <FileText className="w-4 h-4" /> Instruções
+                  </button>
+                  <button 
+                    onClick={() => setUploadMethod("FILE")}
+                    className={cn(
+                      "flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2",
+                      uploadMethod === "FILE" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    <Upload className="w-4 h-4" /> PDFs / Material
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 ml-1">O que este trabalho deve conter?</label>
+                  <textarea 
+                    placeholder="Ex: Faça um trabalho sobre a crise hídrica no Brasil, focando em soluções sustentáveis..."
+                    className="w-full h-32 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-emerald-500 outline-none transition-all resize-none"
+                    value={uploadText}
+                    onChange={(e) => setUploadText(e.target.value)}
+                  />
+                </div>
+
+                {uploadMethod === "FILE" || selectedFiles.length > 0 ? (
+                  <div className="space-y-4">
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-emerald-500 hover:bg-emerald-50/30 transition-all cursor-pointer group"
+                    >
+                      <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        className="hidden" 
+                        onChange={handleFileChange}
+                        accept="image/*,application/pdf"
+                        multiple
+                      />
+                      <div className="bg-emerald-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                        <Upload className="text-emerald-600 w-6 h-6" />
+                      </div>
+                      <p className="text-slate-600 font-bold">Adicionar mais materiais</p>
+                    </div>
+
+                    {selectedFiles.length > 0 && (
+                      <div className="grid grid-cols-2 gap-3">
+                        {selectedFiles.map((file, idx) => (
+                          <div key={idx} className="relative group bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center gap-2">
+                            <div className="bg-emerald-100 p-2 rounded-lg">
+                              {file.type.startsWith('image/') ? <Camera className="w-4 h-4 text-emerald-600" /> : <FileIcon className="w-4 h-4 text-emerald-600" />}
+                            </div>
+                            <span className="text-xs font-medium text-slate-600 truncate max-w-[120px]">{file.name}</span>
+                            <button 
+                              onClick={() => removeFile(idx)}
+                              className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 shadow-md hover:bg-rose-600 transition-colors z-10"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                <button 
+                  onClick={startAssignment}
+                  disabled={!uploadText.trim() && selectedFiles.length === 0}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-4 rounded-2xl shadow-lg shadow-emerald-200 transition-all flex items-center justify-center gap-2"
+                >
+                  Gerar Trabalho Acadêmico
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+
+              <button 
+                onClick={() => setState("HOME")}
+                className="mx-auto flex items-center gap-2 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" /> Voltar
+              </button>
+            </motion.div>
+          )}
+
+          {/* ASSIGNMENT RESULT STATE */}
+          {state === "ASSIGNMENT_RESULT" && assignment && (
+            <motion.div 
+              key="assignment-result"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="max-w-4xl mx-auto space-y-8"
+            >
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-24 z-30 bg-[#f8fafc]/80 backdrop-blur-sm py-4">
+                <div>
+                  <h2 className="text-3xl font-bold text-slate-900 line-clamp-1">{assignment.title}</h2>
+                  <p className="text-slate-500">Trabalho formatado e pronto para entrega</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={exportToPDF}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
+                  >
+                    <Download className="w-5 h-5" />
+                    Baixar PDF
+                  </button>
+                  <button 
+                    onClick={() => window.print()}
+                    className="bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-700 font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2"
+                  >
+                    <Printer className="w-5 h-5" />
+                    Imprimir
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 p-12 space-y-12 print:shadow-none print:border-none print:p-0">
+                {/* Academic Formatting Title Page Preview */}
+                <div className="text-center space-y-8 pb-12 border-b border-slate-100">
+                  <div className="uppercase tracking-[0.2em] text-slate-400 text-sm font-bold">Produção Acadêmica Inteligente</div>
+                  <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 max-w-2xl mx-auto leading-tight italic">
+                    {assignment.title}
+                  </h1>
+                  <div className="pt-8 space-y-1 text-slate-500 font-medium">
+                    <p>Brasil</p>
+                    <p>{new Date().getFullYear()}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-10">
+                  <section className="space-y-4">
+                    <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                      <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-lg">1</span>
+                      Introdução
+                    </h3>
+                    <div className="prose prose-slate max-w-none text-lg leading-relaxed">
+                      <ReactMarkdown>{assignment.introduction}</ReactMarkdown>
+                    </div>
+                  </section>
+
+                  {assignment.sections.map((section, idx) => (
+                    <section key={idx} className="space-y-4">
+                       <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                        <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-lg">{idx + 2}</span>
+                        {section.title}
+                      </h3>
+                      <div className="prose prose-slate max-w-none text-lg leading-relaxed">
+                        <ReactMarkdown>{section.content}</ReactMarkdown>
+                      </div>
+                    </section>
+                  ))}
+
+                  <section className="space-y-4">
+                    <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                      <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-lg">{assignment.sections.length + 2}</span>
+                      Conclusão
+                    </h3>
+                    <div className="prose prose-slate max-w-none text-lg leading-relaxed">
+                      <ReactMarkdown>{assignment.conclusion}</ReactMarkdown>
+                    </div>
+                  </section>
+
+                  {assignment.references.length > 0 && (
+                    <section className="pt-12 border-t border-slate-100 space-y-6">
+                      <h3 className="text-xl font-bold text-slate-800 uppercase tracking-wider">Referências Bibliográficas</h3>
+                      <ul className="space-y-3">
+                        {assignment.references.map((ref, idx) => (
+                          <li key={idx} className="text-slate-500 font-mono text-sm border-l-4 border-slate-100 pl-4 py-1">
+                            {ref}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 flex flex-col sm:flex-row gap-4 mb-20">
+                <button 
+                  onClick={() => {
+                    setUploadText("");
+                    setSelectedFiles([]);
+                    setAssignment(null);
+                    setState("ASSIGNMENT");
+                  }}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+                >
+                  <RefreshCcw className="w-5 h-5" /> Novo Trabalho
                 </button>
                 <button 
                   onClick={reset}
@@ -1099,6 +1472,109 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showFeedbackModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden"
+            >
+              <div className="bg-indigo-600 p-8 text-white relative">
+                <button 
+                  onClick={() => setShowFeedbackModal(false)}
+                  className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="bg-white/20 p-2 rounded-lg">
+                    <MessageSquare className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-2xl font-bold">Feedback</h3>
+                </div>
+                <p className="text-indigo-100 text-sm">Ajude-nos a melhorar o Lema com sua sugestão ou relato de bug.</p>
+              </div>
+
+              <form onSubmit={handleSubmitFeedback} className="p-8 space-y-6">
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button 
+                    type="button"
+                    onClick={() => setFeedbackType("suggestion")}
+                    className={cn(
+                      "flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2",
+                      feedbackType === "suggestion" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    <AlertCircle className="w-4 h-4" /> Sugestão
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setFeedbackType("bug")}
+                    className={cn(
+                      "flex-1 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2",
+                      feedbackType === "bug" ? "bg-white text-rose-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    <Bug className="w-4 h-4" /> Bug / Erro
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Descrição</label>
+                  <textarea 
+                    autoFocus
+                    required
+                    value={feedbackContent}
+                    onChange={(e) => setFeedbackContent(e.target.value)}
+                    placeholder={feedbackType === "suggestion" ? "O que poderíamos adicionar ou melhorar?" : "O que aconteceu? Como podemos reproduzir o erro?"}
+                    className="w-full h-32 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none transition-all resize-none text-slate-700"
+                  />
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={isSubmittingFeedback || !feedbackContent.trim()}
+                  className={cn(
+                    "w-full py-4 rounded-2xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2",
+                    feedbackType === "suggestion" ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100" : "bg-rose-600 hover:bg-rose-700 shadow-rose-100",
+                    isSubmittingFeedback && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  {isSubmittingFeedback ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      Enviar Feedback
+                      <ChevronRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <button 
+        onClick={() => setShowFeedbackModal(true)}
+        className="fixed bottom-6 right-6 z-40 bg-white border-2 border-slate-200 hover:border-indigo-500 text-slate-700 p-4 rounded-2xl shadow-xl hover:shadow-2xl transition-all group flex items-center gap-2"
+      >
+        <div className="bg-indigo-50 p-2 rounded-lg group-hover:bg-indigo-600 transition-colors">
+          <MessageSquare className="w-5 h-5 text-indigo-600 group-hover:text-white" />
+        </div>
+        <span className="font-bold hidden md:block">Sugestão / Bug</span>
+      </button>
 
       {/* Footer */}
       <footer className="py-12 text-center text-slate-400 text-sm">

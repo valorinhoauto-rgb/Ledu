@@ -38,6 +38,14 @@ export interface StudyTopic {
   content: string;
 }
 
+export interface Assignment {
+  title: string;
+  introduction: string;
+  sections: { title: string; content: string }[];
+  conclusion: string;
+  references: string[];
+}
+
 // Função auxiliar para lidar com retentativas em caso de erro de cota (429) ou instabilidade (503/500)
 const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 4, delay = 3000): Promise<T> => {
   let lastError: any;
@@ -357,6 +365,88 @@ export const geminiService = {
     } catch (e) {
       console.error("Erro ao obter resposta rápida", e);
       return [{ answer: "Erro", explanation: "Ocorreu um erro ao processar sua pergunta." }];
+    }
+  },
+
+  async generateAssignment(instructions: string, mediaItems?: { base64Data: string, mimeType: string }[]): Promise<Assignment> {
+    const ai = getAI();
+    const parts: any[] = [];
+    if (mediaItems) {
+      mediaItems.forEach(item => {
+        parts.push({
+          inlineData: {
+            data: item.base64Data,
+            mimeType: item.mimeType,
+          }
+        });
+      });
+    }
+    
+    parts.push({
+      text: `Você é um assistente acadêmico especializado em produzir trabalhos escolares e universitários de alta qualidade.
+      O usuário deseja que você ajude a realizar um trabalho baseado nas seguintes instruções:
+      
+      INSTRUAÇÕES: "${instructions}"
+      
+      Se houver arquivos (PDFs ou Imagens), use-os como base principal para estruturar o trabalho, extraindo informações relevantes e citando-as quando apropriado.
+      
+      O trabalho deve seguir uma estrutura acadêmica formal e organizada:
+      1. Título impactante e apropriado.
+      2. Introdução que apresenta o tema e os objetivos.
+      3. Desenvolvimento dividido em seções temáticas coerentes.
+      4. Conclusão que sintetiza os aprendizados.
+      5. Referências Bibliográficas formatadas.
+      
+      Estruture o conteúdo de cada seção de forma detalhada, informativa e bem escrita.
+      
+      Retorne um objeto JSON com a seguinte estrutura:
+      - "title": string
+      - "introduction": string (pode conter markdown)
+      - "sections": array de { "title": string, "content": string (pode conter markdown) }
+      - "conclusion": string (pode conter markdown)
+      - "references": array de strings
+      
+      IMPORTANTE: Use markdown dentro dos campos de texto para itálico, negrito, listas, etc.
+      Retorne APENAS o objeto JSON.`
+    });
+
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-flash-latest",
+      contents: [{ parts }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            introduction: { type: Type.STRING },
+            sections: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  content: { type: Type.STRING },
+                },
+                required: ["title", "content"],
+              },
+            },
+            conclusion: { type: Type.STRING },
+            references: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+          },
+          required: ["title", "introduction", "sections", "conclusion", "references"],
+        },
+      },
+    }));
+
+    try {
+      return JSON.parse(response.text || "{}");
+    } catch (e) {
+      console.error("Erro ao gerar trabalho", e);
+      throw new Error("Erro ao formatar o trabalho acadêmico. Tente novamente.");
     }
   },
 };

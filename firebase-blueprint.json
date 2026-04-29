@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "Feedback": {
+      "title": "Feedback",
+      "description": "User suggestions and bug reports.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["suggestion", "bug"],
+          "description": "Type of feedback."
+        },
+        "content": {
+          "type": "string",
+          "description": "The detailed feedback content."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Contact email of the user."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time the feedback was submitted."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "reviewed", "resolved"],
+          "description": "Status of the feedback."
+        }
+      },
+      "required": ["type", "content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "feedback": {
+      "schema": "Feedback",
+      "description": "Collection for storing user feedback."
+    }
+  }
+}
