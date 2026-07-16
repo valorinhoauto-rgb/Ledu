@@ -99,6 +99,8 @@ export const geminiService = {
       Forneça uma lista de tópicos principais com explicações claras, intuitivas e didáticas.
       Retorne em formato JSON: uma lista de objetos com "title" e "content" (em markdown).`,
       config: {
+        temperature: 0,
+        seed: 42,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -141,6 +143,8 @@ export const geminiService = {
       
       Retorne em formato JSON: uma lista de objetos com "id", "type" ("MULTIPLE_CHOICE" ou "OPEN_ENDED"), "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
       config: {
+        temperature: 0,
+        seed: 42,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -185,6 +189,8 @@ export const geminiService = {
       Forneça um feedback construtivo em português.
       Retorne em formato JSON com os campos "score" (número) e "feedback" (string).`,
       config: {
+        temperature: 0,
+        seed: 42,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -215,7 +221,7 @@ export const geminiService = {
       Gere um simulado completo baseado ESTRITAMENTE nesse conteúdo seguindo estas regras:
       1. O simulado deve ter EXATAMENTE 10 questões de múltipla escolha (MULTIPLE_CHOICE) e 6 questões discursivas (OPEN_ENDED).
       2. Se o conteúdo contiver mais de 10 questões de múltipla escolha, selecione as 10 mais relevantes e com maior probabilidade de cair em uma prova oficial.
-      3. Se o conteúdo contiver questões prontas, siga ESTRITAMENTE as perguntas e alternativas fornecidas.
+      3. Se o conteúdo contiver questões prontas, siga ESTRITAMENTE as perguntas e alternativas fornecidas. Identifique e determine a alternativa correta de forma logicamente consistente, precisa e imparcial, garantindo que o gabarito corresponda de forma estrita à alternativa cientificamente/historicamente aceita ou informada no texto.
       4. IMPORTANTE: Preserve e MELHORE a formatação. Use quebras de linha claras (\n\n) entre sentenças ou tópicos para evitar blocos de texto densos. Se houver itens numerados ou com letras, coloque cada um em uma nova linha.
       5. Se não houver questões discursivas no conteúdo, crie 6 questões discursivas baseadas nos temas abordados nas questões de múltipla escolha fornecidas.
       6. Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
@@ -223,6 +229,8 @@ export const geminiService = {
       Traduza para o português se necessário.
       Retorne em formato JSON: uma lista de objetos com "id", "type", "question", "options", "correctAnswer", "suggestedAnswer" e "explanation".`,
       config: {
+        temperature: 0,
+        seed: 42,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -271,7 +279,7 @@ export const geminiService = {
               text: `Analise os arquivos fornecidos e gere um simulado completo seguindo estas regras:
               1. O simulado deve ter EXATAMENTE 10 questões de múltipla escolha (MULTIPLE_CHOICE) e 6 questões discursivas (OPEN_ENDED).
               2. Se os arquivos contiverem mais de 10 questões de múltipla escolha, selecione as 10 mais relevantes e com maior probabilidade de cair em uma prova oficial.
-              3. Se houver questões prontas nos arquivos, siga ESTRITAMENTE as perguntas e alternativas fornecidas.
+              3. Se houver questões prontas nos arquivos, siga ESTRITAMENTE as perguntas e alternativas fornecidas. Identifique e determine a alternativa correta de forma logicamente consistente, precisa e imparcial, garantindo que o gabarito corresponda de forma estrita à alternativa cientificamente/historicamente aceita ou informada no texto.
               4. IMPORTANTE: Melhore a legibilidade do texto extraído. Use quebras de linha duplas (\n\n) para separar parágrafos e tópicos. Se a questão tiver itens (I, II, III...), coloque cada um em sua própria linha.
               5. Se não houver questões discursivas nos arquivos, crie 6 questões discursivas baseadas nos temas abordados nas questões de múltipla escolha identificadas.
               6. Para as questões discursivas, forneça uma "suggestedAnswer" (resposta modelo) e "explanation" (critérios de correção).
@@ -283,6 +291,8 @@ export const geminiService = {
         },
       ],
       config: {
+        temperature: 0,
+        seed: 42,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -344,6 +354,8 @@ export const geminiService = {
       model: "gemini-3.5-flash",
       contents: [{ parts }],
       config: {
+        temperature: 0,
+        seed: 42,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -414,6 +426,8 @@ export const geminiService = {
       model: "gemini-3.5-flash",
       contents: [{ parts }],
       config: {
+        temperature: 0,
+        seed: 42,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
