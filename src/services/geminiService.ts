@@ -1,4 +1,71 @@
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db, auth } from "../lib/firebase";
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove accents
+    .replace(/[^a-z0-9]/g, ""); // remove non-alphanumeric characters
+}
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
 
 // Função para obter a chave de forma dinâmica
 const getApiKey = () => {
@@ -90,6 +157,77 @@ export interface EvaluationResult {
   feedback: string;
 }
 
+async function processAndSyncQuizQuestions(questions: QuizQuestion[]): Promise<QuizQuestion[]> {
+  const processedQuestions: QuizQuestion[] = [];
+
+  for (const q of questions) {
+    if (!q.question) {
+      processedQuestions.push(q);
+      continue;
+    }
+
+    const normalized = normalizeText(q.question);
+    const docId = normalized.slice(0, 100) + "_" + simpleHash(normalized);
+    const questionRef = doc(db, "questions_registry", docId);
+
+    let storedData: any = null;
+    try {
+      const questionSnap = await getDoc(questionRef);
+      if (questionSnap.exists()) {
+        storedData = questionSnap.data();
+      }
+    } catch (err) {
+      try {
+        handleFirestoreError(err, OperationType.GET, `questions_registry/${docId}`);
+      } catch (logErr) {
+        console.error("Firestore Error Info Logged (GET):", logErr);
+      }
+    }
+
+    if (storedData) {
+      console.log(`[questions_registry] Encontrada questão consistente para: "${q.question.slice(0, 30)}..."`);
+      
+      const merged: QuizQuestion = {
+        ...q,
+        type: storedData.type as QuestionType,
+        options: storedData.options || q.options,
+        correctAnswer: storedData.correctAnswer !== undefined && storedData.correctAnswer !== null ? storedData.correctAnswer : q.correctAnswer,
+        suggestedAnswer: storedData.suggestedAnswer || q.suggestedAnswer,
+        explanation: storedData.explanation || q.explanation,
+      };
+      processedQuestions.push(merged);
+    } else {
+      console.log(`[questions_registry] Registrando nova questão para consistência: "${q.question.slice(0, 30)}..."`);
+      const docData: any = {
+        question: q.question,
+        type: q.type,
+        explanation: q.explanation || "",
+        createdAt: serverTimestamp(),
+      };
+
+      if (q.type === "MULTIPLE_CHOICE") {
+        docData.options = q.options || [];
+        docData.correctAnswer = q.correctAnswer !== undefined ? q.correctAnswer : null;
+      } else if (q.type === "OPEN_ENDED") {
+        docData.suggestedAnswer = q.suggestedAnswer || "";
+      }
+
+      try {
+        await setDoc(questionRef, docData);
+      } catch (err) {
+        try {
+          handleFirestoreError(err, OperationType.WRITE, `questions_registry/${docId}`);
+        } catch (logErr) {
+          console.error("Firestore Error Info Logged (WRITE):", logErr);
+        }
+      }
+      processedQuestions.push(q);
+    }
+  }
+
+  return processedQuestions;
+}
+
 export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
     const ai = getAI();
@@ -169,7 +307,8 @@ export const geminiService = {
     }));
 
     try {
-      return JSON.parse(response.text || "[]");
+      const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
+      return await processAndSyncQuizQuestions(generated);
     } catch (e) {
       console.error("Erro ao gerar simulado", e);
       return [];
@@ -255,7 +394,8 @@ export const geminiService = {
     }));
 
     try {
-      return JSON.parse(response.text || "[]");
+      const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
+      return await processAndSyncQuizQuestions(generated);
     } catch (e) {
       console.error("Erro ao gerar simulado a partir de texto", e);
       return [];
@@ -317,7 +457,8 @@ export const geminiService = {
     }));
 
     try {
-      return JSON.parse(response.text || "[]");
+      const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
+      return await processAndSyncQuizQuestions(generated);
     } catch (e) {
       console.error("Erro ao gerar simulado a partir de mídia", e);
       return [];

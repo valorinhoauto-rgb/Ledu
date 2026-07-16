@@ -20,10 +20,28 @@ service cloud.firestore {
              data.status == 'pending';
     }
 
+    // Question Registry specific validation
+    function isValidQuestion(data) {
+      return data.keys().hasAll(['question', 'type', 'explanation', 'createdAt']) &&
+             data.question is string && data.question.size() <= 5000 &&
+             data.type in ['MULTIPLE_CHOICE', 'OPEN_ENDED'] &&
+             data.explanation is string && data.explanation.size() <= 5000 &&
+             data.createdAt == request.time &&
+             (!data.keys().hasAny(['options']) || (data.options is list && data.options.size() <= 10)) &&
+             (!data.keys().hasAny(['correctAnswer']) || data.correctAnswer is int) &&
+             (!data.keys().hasAny(['suggestedAnswer']) || (data.suggestedAnswer is string && data.suggestedAnswer.size() <= 5000));
+    }
+
     match /feedback/{feedbackId} {
       allow create: if isValidFeedback(request.resource.data);
       // Only admins should read feedback. For now, we block public reads.
       allow read: if false; 
+    }
+
+    match /questions_registry/{questionId} {
+      allow get: if isValidId(questionId);
+      allow create: if isValidId(questionId) && isValidQuestion(request.resource.data);
+      allow list, update, delete: if false;
     }
   }
 }

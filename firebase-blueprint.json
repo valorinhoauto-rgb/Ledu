@@ -31,12 +31,55 @@
         }
       },
       "required": ["type", "content", "createdAt"]
+    },
+    "QuestionRegistry": {
+      "title": "QuestionRegistry",
+      "description": "Registered questions and their correct answers.",
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "The exact question text."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["MULTIPLE_CHOICE", "OPEN_ENDED"],
+          "description": "Type of the question."
+        },
+        "options": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Options for multiple choice."
+        },
+        "correctAnswer": {
+          "type": "integer",
+          "description": "0-based index of correct answer."
+        },
+        "suggestedAnswer": {
+          "type": "string",
+          "description": "Suggested answer for open ended questions."
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Explanation of the correct answer."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the question was registered."
+        }
+      },
+      "required": ["question", "type", "explanation", "createdAt"]
     }
   },
   "firestore": {
     "feedback": {
       "schema": "Feedback",
       "description": "Collection for storing user feedback."
+    },
+    "questions_registry/{questionId}": {
+      "schema": "QuestionRegistry",
+      "description": "Collection of globally registered questions and answers."
     }
   }
 }
