@@ -68,25 +68,25 @@ function simpleHash(str: string): string {
 }
 
 // Função para obter a chave de forma dinâmica
-const getApiKey = () => {
+export const getApiKey = () => {
   // 1. Tenta pegar da variável de ambiente do Vite (Recomendado para Netlify/Vercel)
-  // No Netlify, configure como VITE_GEMINI_API_KEY
+  // No Netlify, configure como VITE_GEMINI_API_KEY ou GEMINI_API_KEY
   const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (viteKey) return viteKey;
+  if (viteKey && typeof viteKey === 'string' && viteKey.trim() !== '') return viteKey.trim();
 
   // 2. Fallback para process.env (Injetado pelo Vite via define no vite.config.ts)
-  // Útil para o ambiente do AI Studio
+  // Útil para o ambiente do AI Studio e builds do Netlify
   try {
     const envKey = process.env.GEMINI_API_KEY;
-    if (envKey) return envKey;
+    if (envKey && typeof envKey === 'string' && envKey.trim() !== '') return envKey.trim();
   } catch (e) {
     // process.env pode não estar definido no browser
   }
 
-  // 3. Tenta pegar do localStorage (Último recurso para o usuário configurar manualmente no console)
+  // 3. Tenta pegar do localStorage
   if (typeof window !== 'undefined') {
-    const localKey = localStorage.getItem("LEMA_API_KEY");
-    if (localKey) return localKey;
+    const localKey = localStorage.getItem("LEMA_API_KEY") || localStorage.getItem("GEMINI_API_KEY");
+    if (localKey && typeof localKey === 'string' && localKey.trim() !== '') return localKey.trim();
   }
 
   return "";
@@ -95,9 +95,17 @@ const getApiKey = () => {
 // Criamos uma função que retorna a instância do AI sempre atualizada
 const getAI = () => {
   const key = getApiKey();
-  // No AI Studio, process.env.GEMINI_API_KEY é injetado automaticamente.
-  // O SDK @google/genai prefere a inicialização direta.
-  return new GoogleGenAI({ apiKey: key });
+  if (!key) {
+    throw new Error("API_KEY_MISSING: Chave da API Gemini não encontrada. Configure VITE_GEMINI_API_KEY nas variáveis de ambiente do Netlify.");
+  }
+  return new GoogleGenAI({
+    apiKey: key,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
 };
 
 export interface StudyTopic {
@@ -232,7 +240,7 @@ export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: `Você é um tutor especializado. O aluno quer estudar sobre: "${subject}". 
       Forneça uma lista de tópicos principais com explicações claras, intuitivas e didáticas.
       Retorne em formato JSON: uma lista de objetos com "title" e "content" (em markdown).`,
@@ -255,17 +263,21 @@ export const geminiService = {
     }));
 
     try {
-      return JSON.parse(response.text || "[]");
-    } catch (e) {
+      const parsed = JSON.parse(response.text || "[]");
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error("Não foi possível gerar tópicos para este assunto.");
+      }
+      return parsed;
+    } catch (e: any) {
       console.error("Erro ao parsear tópicos de estudo", e);
-      return [];
+      throw e;
     }
   },
 
   async generateQuiz(subject: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: `Gere um simulado completo sobre o tema: "${subject}".
       O simulado deve conter EXATAMENTE:
       1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE) com 4 opções cada.
@@ -308,17 +320,20 @@ export const geminiService = {
 
     try {
       const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
+      if (!Array.isArray(generated) || generated.length === 0) {
+        throw new Error("O modelo não retornou questões válidas. Tente novamente.");
+      }
       return await processAndSyncQuizQuestions(generated);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro ao gerar simulado", e);
-      return [];
+      throw e;
     }
   },
 
   async evaluateOpenAnswer(question: string, suggestedAnswer: string, userAnswer: string): Promise<EvaluationResult> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: `Avalie a resposta do aluno para a seguinte questão discursiva:
       Questão: "${question}"
       Resposta Modelo: "${suggestedAnswer}"
@@ -353,7 +368,7 @@ export const geminiService = {
   async generateQuizFromText(userQuestions: string): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: `O usuário forneceu o seguinte conteúdo para um simulado:
       "${userQuestions}"
       
@@ -395,17 +410,20 @@ export const geminiService = {
 
     try {
       const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
+      if (!Array.isArray(generated) || generated.length === 0) {
+        throw new Error("O modelo não retornou questões válidas a partir do texto fornecido.");
+      }
       return await processAndSyncQuizQuestions(generated);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro ao gerar simulado a partir de texto", e);
-      return [];
+      throw e;
     }
   },
 
   async generateQuizFromMedia(mediaItems: { base64Data: string, mimeType: string }[]): Promise<QuizQuestion[]> {
     const ai = getAI();
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: [
         {
           parts: [
@@ -458,10 +476,13 @@ export const geminiService = {
 
     try {
       const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
+      if (!Array.isArray(generated) || generated.length === 0) {
+        throw new Error("O modelo não retornou questões válidas a partir dos arquivos fornecidos.");
+      }
       return await processAndSyncQuizQuestions(generated);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro ao gerar simulado a partir de mídia", e);
-      return [];
+      throw e;
     }
   },
 
@@ -492,7 +513,7 @@ export const geminiService = {
     });
 
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: [{ parts }],
       config: {
         temperature: 0,
@@ -515,9 +536,9 @@ export const geminiService = {
     try {
       const results = JSON.parse(response.text || "[]");
       return Array.isArray(results) ? results : [results];
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro ao obter resposta rápida", e);
-      return [{ answer: "Erro", explanation: "Ocorreu um erro ao processar sua pergunta." }];
+      throw e;
     }
   },
 
@@ -564,7 +585,7 @@ export const geminiService = {
     });
 
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: [{ parts }],
       config: {
         temperature: 0,

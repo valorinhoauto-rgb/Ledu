@@ -120,10 +120,21 @@ export default function App() {
 
   const startStudy = async () => {
     setLoading(true);
-    const data = await geminiService.getStudyTopics(subject);
-    setTopics(data);
-    setLoading(false);
-    setState("STUDY");
+    try {
+      const data = await geminiService.getStudyTopics(subject);
+      setTopics(data);
+      setLoading(false);
+      setState("STUDY");
+    } catch (error: any) {
+      console.error("Erro ao carregar tópicos de estudo:", error);
+      setLoading(false);
+      const msg = error?.message || String(error);
+      if (msg.includes("API_KEY_MISSING") || msg.includes("API key not valid") || msg.includes("API key") || msg.includes("API_KEY")) {
+        alert("Chave da API Gemini não configurada ou inválida!\n\nNo Netlify:\n1. Acesse Site configuration > Environment variables\n2. Adicione a variável VITE_GEMINI_API_KEY com a sua chave do Gemini\n3. Em Deploys, clique em 'Trigger deploy' > 'Clear cache and deploy site'");
+      } else {
+        alert(`Erro ao carregar tópicos: ${msg}`);
+      }
+    }
   };
 
   const startQuiz = async (fromUpload = false) => {
@@ -153,10 +164,13 @@ export default function App() {
     } catch (error: any) {
       console.error("Erro ao iniciar simulado:", error);
       setLoading(false);
-      if (error?.message?.includes("API key")) {
-        alert("Chave de API não encontrada! Se você estiver no Netlify, configure a variável VITE_GEMINI_API_KEY. Se estiver no AI Studio, use o painel de Secrets.");
+      const msg = error?.message || String(error);
+      if (msg.includes("API_KEY_MISSING") || msg.includes("API key not valid") || msg.includes("API key") || msg.includes("API_KEY")) {
+        alert("Chave da API Gemini não configurada ou inválida!\n\nNo Netlify:\n1. Acesse Site configuration > Environment variables\n2. Adicione a variável VITE_GEMINI_API_KEY com a sua chave do Gemini\n3. Em Deploys, clique em 'Trigger deploy' > 'Clear cache and deploy site'");
+      } else if (msg.includes("Quota exceeded") || msg.includes("429")) {
+        alert("Limite de cota atingido temporariamente na API do Gemini. Aguarde alguns instantes e tente novamente.");
       } else {
-        alert("Ocorreu um erro ao gerar o simulado. Verifique sua conexão e a chave de API.");
+        alert(`Ocorreu um erro ao gerar o simulado:\n${msg}\n\nVerifique sua conexão e a chave de API.`);
       }
     }
   };
@@ -183,8 +197,11 @@ export default function App() {
     } catch (error: any) {
       console.error("Erro ao obter resposta rápida:", error);
       setLoading(false);
-      if (error?.message?.includes("API key")) {
-        alert("Chave de API não encontrada! Configure a variável de ambiente necessária.");
+      const msg = error?.message || String(error);
+      if (msg.includes("API_KEY_MISSING") || msg.includes("API key not valid") || msg.includes("API key") || msg.includes("API_KEY")) {
+        alert("Chave da API Gemini não configurada ou inválida!\n\nNo Netlify:\n1. Acesse Site configuration > Environment variables\n2. Adicione a variável VITE_GEMINI_API_KEY com a sua chave do Gemini\n3. Em Deploys, clique em 'Trigger deploy' > 'Clear cache and deploy site'");
+      } else {
+        alert(`Erro ao processar: ${msg}`);
       }
     }
   };
@@ -207,7 +224,12 @@ export default function App() {
     } catch (error: any) {
       console.error("Erro ao gerar trabalho:", error);
       setLoading(false);
-      alert("Ocorreu um erro ao gerar seu trabalho. Tente novamente.");
+      const msg = error?.message || String(error);
+      if (msg.includes("API_KEY_MISSING") || msg.includes("API key not valid") || msg.includes("API key") || msg.includes("API_KEY")) {
+        alert("Chave da API Gemini não configurada ou inválida!\n\nNo Netlify:\n1. Acesse Site configuration > Environment variables\n2. Adicione a variável VITE_GEMINI_API_KEY com a sua chave do Gemini\n3. Em Deploys, clique em 'Trigger deploy' > 'Clear cache and deploy site'");
+      } else {
+        alert(`Ocorreu um erro ao gerar seu trabalho:\n${msg}\n\nTente novamente.`);
+      }
     }
   };
 
