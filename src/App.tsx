@@ -329,18 +329,19 @@ export default function App() {
   };
 
   const calculateScore = () => {
-    const mcQuestions = questions.filter(q => q.type === "MULTIPLE_CHOICE");
-    const openQuestions = questions.filter(q => q.type === "OPEN_ENDED");
-    
     let mcCorrect = 0;
-    mcQuestions.forEach((q) => {
-      const indexInQuestions = questions.findIndex(quest => quest.id === q.id);
-      if (userAnswers[indexInQuestions] === q.correctAnswer) {
-        mcCorrect++;
+    let mcTotal = 0;
+
+    questions.forEach((q, idx) => {
+      if (q.type === "MULTIPLE_CHOICE") {
+        mcTotal++;
+        if (userAnswers[idx] !== undefined && userAnswers[idx] === q.correctAnswer) {
+          mcCorrect++;
+        }
       }
     });
     
-    const mcScore = mcCorrect * 10; // 10 points each, max 100
+    const mcScore = mcTotal > 0 ? Math.round((mcCorrect / mcTotal) * 100) : 0; // Max 100
     
     const openScores = Object.values(evaluations).map(e => e.score).sort((a, b) => b - a);
     const top3OpenScores = openScores.slice(0, 3);
@@ -359,7 +360,7 @@ export default function App() {
       openScore: Math.round(openScore),
       finalScore,
       mcCorrect,
-      mcTotal: mcQuestions.length,
+      mcTotal,
       openAnswered: Object.keys(evaluations).length
     };
   };
@@ -1236,7 +1237,7 @@ export default function App() {
                       onChange={(e) => setUserOpenAnswers(prev => ({ ...prev, [questions[currentQuestionIndex].id]: e.target.value }))}
                     />
                     <p className="text-xs text-slate-400 italic">
-                      Dica: Tente ser o mais completo possível para uma melhor avaliação.
+                      Dica: Explique com suas próprias palavras! Não é necessário usar termos técnicos — demonstrar que está na direção certa já garante uma ótima pontuação.
                     </p>
                   </div>
                 )}
@@ -1348,6 +1349,7 @@ export default function App() {
                             {q.options?.map((opt, optIdx) => {
                               const isUserChoice = userAnswers[idx] === optIdx;
                               const isCorrectAnswer = q.correctAnswer === optIdx;
+                              const optionLetter = String.fromCharCode(65 + optIdx);
                               
                               return (
                                 <div 
@@ -1358,8 +1360,15 @@ export default function App() {
                                     isUserChoice ? "bg-rose-50 border-rose-200 text-rose-900" : "bg-slate-50 border-transparent text-slate-500"
                                   )}
                                 >
-                                  {isCorrectAnswer && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-                                  {!isCorrectAnswer && isUserChoice && <XCircle className="w-4 h-4 shrink-0" />}
+                                  <span className={cn(
+                                    "w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0",
+                                    isCorrectAnswer ? "bg-emerald-600 text-white" :
+                                    isUserChoice ? "bg-rose-600 text-white" : "bg-slate-200/70 text-slate-600"
+                                  )}>
+                                    {optionLetter}
+                                  </span>
+                                  {isCorrectAnswer && <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />}
+                                  {!isCorrectAnswer && isUserChoice && <XCircle className="w-4 h-4 shrink-0 text-rose-600" />}
                                   <span className="font-medium">{opt}</span>
                                 </div>
                               );
