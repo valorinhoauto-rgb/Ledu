@@ -445,17 +445,17 @@ async function processAndSyncQuizQuestions(questions: QuizQuestion[]): Promise<Q
     } else {
       console.log(`[questions_registry] Registrando nova questão para consistência: "${q.question.slice(0, 30)}..."`);
       const docData: any = {
-        question: q.question,
+        question: q.question.slice(0, 5000),
         type: q.type,
-        explanation: q.explanation || "",
+        explanation: (q.explanation || "").slice(0, 5000),
         createdAt: serverTimestamp(),
       };
 
       if (q.type === "MULTIPLE_CHOICE") {
-        docData.options = q.options || [];
-        docData.correctAnswer = typeof q.correctAnswer === "number" ? q.correctAnswer : 0;
+        docData.options = (q.options || []).slice(0, 10);
+        docData.correctAnswer = typeof q.correctAnswer === "number" ? Math.round(q.correctAnswer) : 0;
       } else if (q.type === "OPEN_ENDED") {
-        docData.suggestedAnswer = q.suggestedAnswer || "";
+        docData.suggestedAnswer = (q.suggestedAnswer || "").slice(0, 5000);
       }
 
       try {
@@ -638,14 +638,14 @@ export const geminiService = {
       const parsed: EvaluationResult = JSON.parse(response.text || '{"score": 0, "feedback": "Erro na avaliação"}');
       const finalResult: EvaluationResult = {
         score: Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0))),
-        feedback: parsed.feedback || "Avaliação concluída.",
+        feedback: (parsed.feedback || "Avaliação concluída.").slice(0, 5000),
       };
 
-      if (qNorm && aNorm && question.length < 10000 && userAnswer.length < 10000) {
+      if (qNorm && aNorm && question.trim().length > 0 && userAnswer.trim().length > 0) {
         try {
           await setDoc(evalRef, {
-            question,
-            userAnswer,
+            question: question.slice(0, 5000),
+            userAnswer: userAnswer.slice(0, 5000),
             score: finalResult.score,
             feedback: finalResult.feedback,
             createdAt: serverTimestamp(),

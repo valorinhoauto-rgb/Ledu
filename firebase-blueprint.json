@@ -70,6 +70,38 @@
         }
       },
       "required": ["question", "type", "explanation", "createdAt"]
+    },
+    "EvaluatedAnswer": {
+      "title": "EvaluatedAnswer",
+      "description": "Cached evaluation of an open-ended student answer for consistency.",
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string",
+          "maxLength": 5000,
+          "description": "The open-ended question text."
+        },
+        "userAnswer": {
+          "type": "string",
+          "maxLength": 5000,
+          "description": "The student's submitted answer."
+        },
+        "score": {
+          "type": "integer",
+          "description": "Evaluated score from 0 to 100."
+        },
+        "feedback": {
+          "type": "string",
+          "maxLength": 5000,
+          "description": "Constructive feedback for the student."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the answer was evaluated."
+        }
+      },
+      "required": ["question", "userAnswer", "score", "feedback", "createdAt"]
     }
   },
   "firestore": {
@@ -80,6 +112,10 @@
     "questions_registry/{questionId}": {
       "schema": "QuestionRegistry",
       "description": "Collection of globally registered questions and answers."
+    },
+    "evaluated_answers/{answerId}": {
+      "schema": "EvaluatedAnswer",
+      "description": "Collection of cached open-ended answer evaluations."
     }
   }
 }

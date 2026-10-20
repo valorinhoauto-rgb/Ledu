@@ -32,6 +32,17 @@ service cloud.firestore {
              (!data.keys().hasAny(['suggestedAnswer']) || (data.suggestedAnswer is string && data.suggestedAnswer.size() <= 5000));
     }
 
+    // Evaluated Answer specific validation
+    function isValidEvaluatedAnswer(data) {
+      return data.keys().hasAll(['question', 'userAnswer', 'score', 'feedback', 'createdAt']) &&
+             data.keys().hasOnly(['question', 'userAnswer', 'score', 'feedback', 'createdAt']) &&
+             data.question is string && data.question.size() > 0 && data.question.size() <= 5000 &&
+             data.userAnswer is string && data.userAnswer.size() > 0 && data.userAnswer.size() <= 5000 &&
+             data.score is int && data.score >= 0 && data.score <= 100 &&
+             data.feedback is string && data.feedback.size() > 0 && data.feedback.size() <= 5000 &&
+             data.createdAt == request.time;
+    }
+
     match /feedback/{feedbackId} {
       allow create: if isValidFeedback(request.resource.data);
       // Only admins should read feedback. For now, we block public reads.
@@ -41,6 +52,12 @@ service cloud.firestore {
     match /questions_registry/{questionId} {
       allow get: if isValidId(questionId);
       allow create: if isValidId(questionId) && isValidQuestion(request.resource.data);
+      allow list, update, delete: if false;
+    }
+
+    match /evaluated_answers/{answerId} {
+      allow get: if isValidId(answerId);
+      allow create: if isValidId(answerId) && isValidEvaluatedAnswer(request.resource.data);
       allow list, update, delete: if false;
     }
   }
