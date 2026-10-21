@@ -27,7 +27,7 @@ import ReactMarkdown from "react-markdown";
 import { jsPDF } from "jspdf";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "./lib/firebase";
-import { geminiService, type QuizQuestion, type StudyTopic, type EvaluationResult, type Assignment } from "./services/geminiService";
+import { geminiService, type QuizQuestion, type StudyTopic, type EvaluationResult, type Assignment, type PerformanceSummary } from "./services/geminiService";
 import { cn } from "./lib/utils";
 
 type AppState = "HOME" | "CHOICE" | "STUDY" | "QUIZ_SETUP" | "QUIZ" | "RESULTS" | "QUICK_ANSWER" | "QUICK_ANSWER_RESULT" | "ASSIGNMENT" | "ASSIGNMENT_RESULT";
@@ -46,6 +46,7 @@ export default function App() {
   const [userAnswers, setUserAnswers] = useState<Record<number, number>>({});
   const [userOpenAnswers, setUserOpenAnswers] = useState<Record<number, string>>({});
   const [evaluations, setEvaluations] = useState<Record<number, EvaluationResult>>({});
+  const [performanceSummary, setPerformanceSummary] = useState<PerformanceSummary | null>(null);
   const [numQuestions, setNumQuestions] = useState(5);
   const [uploadText, setUploadText] = useState("");
   const [uploadMethod, setUploadMethod] = useState<"TEXT" | "FILE">("TEXT");
@@ -159,6 +160,7 @@ export default function App() {
       setUserAnswers({});
       setUserOpenAnswers({});
       setEvaluations({});
+      setPerformanceSummary(null);
       setLoading(false);
       setState("QUIZ");
     } catch (error: any) {
@@ -323,6 +325,17 @@ export default function App() {
       }
       
       setEvaluations(newEvaluations);
+      try {
+        const summary = await geminiService.generateQuizSummary(
+          questions,
+          userAnswers,
+          userOpenAnswers,
+          newEvaluations
+        );
+        setPerformanceSummary(summary);
+      } catch (e) {
+        console.error("Erro ao gerar resumo geral:", e);
+      }
       setLoading(false);
       setState("RESULTS");
     }
@@ -373,6 +386,7 @@ export default function App() {
     setUserAnswers({});
     setUserOpenAnswers({});
     setEvaluations({});
+    setPerformanceSummary(null);
     setUploadText("");
     setSelectedFiles([]);
     setQuickAnswers([]);
@@ -1304,6 +1318,66 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {performanceSummary && (
+                <div className="max-w-4xl mx-auto space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-1">
+                    <h3 className="text-xl font-bold text-slate-800">
+                      Resumo do Seu Desempenho
+                    </h3>
+                    {performanceSummary.encouragement && (
+                      <p className="text-sm text-slate-500">
+                        {performanceSummary.encouragement}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                    {/* Pontos Positivos */}
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                      <div className="flex items-center gap-2.5 text-emerald-700">
+                        <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+                        <h4 className="font-bold text-base">Pontos Positivos (O que você já sabe)</h4>
+                      </div>
+                      <ul className="space-y-3">
+                        {performanceSummary.strengths.map((item, i) => (
+                          <li key={i} className="text-sm text-slate-700 leading-relaxed flex items-start gap-2.5">
+                            <span className="text-emerald-600 font-bold shrink-0">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Onde Melhorar e Dicas */}
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                      <div className="flex items-center gap-2.5 text-indigo-700">
+                        <BookOpen className="w-5 h-5 shrink-0 text-indigo-600" />
+                        <h4 className="font-bold text-base">Onde Melhorar e Dicas para Lembrar</h4>
+                      </div>
+                      {performanceSummary.improvements.length > 0 ? (
+                        <div className="space-y-3.5">
+                          {performanceSummary.improvements.map((imp, i) => (
+                            <div key={i} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                              <div className="font-bold text-slate-800 text-sm">
+                                {imp.topic}
+                              </div>
+                              <p className="text-xs text-slate-600 leading-relaxed">
+                                <span className="font-semibold text-indigo-600">Dica: </span>
+                                {imp.tip}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                          Excelente domínio! Você não teve pontos críticos de atenção neste simulado.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-10">
                 <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-2">

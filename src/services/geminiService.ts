@@ -166,6 +166,17 @@ export interface EvaluationResult {
   feedback: string;
 }
 
+export interface PerformanceImprovement {
+  topic: string;
+  tip: string;
+}
+
+export interface PerformanceSummary {
+  strengths: string[];
+  improvements: PerformanceImprovement[];
+  encouragement: string;
+}
+
 const PORTUGUESE_STOPWORDS = new Set([
   "para", "como", "mais", "pela", "pelo", "pelos", "pelas", "deve", "devem",
   "sobre", "entre", "quando", "onde", "qual", "quais", "porque", "pois",
@@ -940,6 +951,123 @@ export const geminiService = {
     } catch (e) {
       console.error("Erro ao gerar trabalho", e);
       throw new Error("Erro ao formatar o trabalho acadêmico. Tente novamente.");
+    }
+  },
+
+  async generateQuizSummary(
+    questions: QuizQuestion[],
+    userAnswers: Record<number, number>,
+    userOpenAnswers: Record<number, string>,
+    evaluations: Record<number, EvaluationResult>
+  ): Promise<PerformanceSummary> {
+    const ai = getAI();
+
+    const mcCorrectItems: string[] = [];
+    const mcWrongItems: string[] = [];
+    const openItems: string[] = [];
+
+    questions.forEach((q, idx) => {
+      if (q.type === "MULTIPLE_CHOICE") {
+        const chosenIdx = userAnswers[idx];
+        const correctIdx = q.correctAnswer ?? 0;
+        const chosenText = chosenIdx !== undefined && q.options?.[chosenIdx] ? q.options[chosenIdx] : "Não respondida";
+        const correctText = q.options?.[correctIdx] || "";
+
+        if (chosenIdx === correctIdx) {
+          mcCorrectItems.push(`- Questão ${idx + 1}: "${q.question.slice(0, 180)}" -> Acertou ("${correctText.slice(0, 120)}")`);
+        } else {
+          mcWrongItems.push(
+            `- Questão ${idx + 1}: "${q.question.slice(0, 180)}" | Escolheu: "${chosenText.slice(0, 100)}" | Correta era: "${correctText.slice(0, 120)}"`
+          );
+        }
+      } else {
+        const ans = userOpenAnswers[q.id];
+        const evalRes = evaluations[q.id];
+        if (ans && ans.trim()) {
+          openItems.push(
+            `- Dissertativa ${idx + 1}: "${q.question.slice(0, 180)}" | Nota: ${evalRes?.score ?? 0}/100 | Resposta do aluno: "${ans.slice(0, 160)}" | Ideia esperada: "${(q.suggestedAnswer || "").slice(0, 160)}"`
+          );
+        }
+      }
+    });
+
+    const response = await withRetry(() =>
+      ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: `Você é um mentor de estudos direto, acolhedor e super didático. Analise o desempenho do aluno neste simulado e gere um resumo rápido, simples e fácil de ler (NÃO escreva textos longos ou cansativos).
+
+DADOS DO DESEMPENHO DO ALUNO:
+Questões Objetivas Acertadas (${mcCorrectItems.length}):
+${mcCorrectItems.length > 0 ? mcCorrectItems.join("\n") : "Nenhuma questão objetiva acertada."}
+
+Questões Objetivas Erradas (${mcWrongItems.length}):
+${mcWrongItems.length > 0 ? mcWrongItems.join("\n") : "Nenhuma questão objetiva errada! Acertou todas."}
+
+Questões Dissertativas Respondidas (${openItems.length}):
+${openItems.length > 0 ? openItems.join("\n") : "Nenhuma questão dissertativa respondida."}
+
+REGRAS PARA O RESUMO:
+1. "strengths" (Pontos Positivos - O que você já sabe):
+   - Liste de 2 a 3 pontos bem curtos e diretos (máximo 1 frase curta cada) destacando os assuntos ou ideias que a pessoa mostrou dominar nas questões em que acertou ou foi bem.
+   - Se a pessoa acertou poucas ou nenhuma, destaque os conceitos em que ela chegou perto ou elogie a iniciativa nos temas abordados.
+2. "improvements" (Onde melhorar + Dica prática):
+   - Liste de 2 a 4 pontos focados no que a pessoa errou nas objetivas ou pode melhorar nas dissertativas.
+   - Em cada item, preencha:
+     * "topic": O assunto ou ponto específico para revisar (bem curto, 3 a 8 palavras).
+     * "tip": Uma dica simples, didática e prática ("macete", associação fácil para lembrar qual alternativa escolher ou qual ideia-chave colocar na dissertativa). Máximo de 1 a 2 frases curtas por dica, sem linguagem técnica pesada.
+3. "encouragement":
+   - 1 frase curta e motivadora sobre o resultado geral.
+
+Retorne APENAS em formato JSON válido.`,
+        config: {
+          temperature: 0.2,
+          seed: 42,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              strengths: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+              improvements: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    topic: { type: Type.STRING },
+                    tip: { type: Type.STRING },
+                  },
+                  required: ["topic", "tip"],
+                },
+              },
+              encouragement: { type: Type.STRING },
+            },
+            required: ["strengths", "improvements", "encouragement"],
+          },
+        },
+      })
+    );
+
+    try {
+      const parsed = JSON.parse(response.text || "{}");
+      return {
+        strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 4) : [],
+        improvements: Array.isArray(parsed.improvements) ? parsed.improvements.slice(0, 4) : [],
+        encouragement: parsed.encouragement || "Continue praticando! Cada simulado ajuda a fixar melhor o conteúdo.",
+      };
+    } catch (e) {
+      console.error("Erro ao gerar resumo de desempenho", e);
+      return {
+        strengths: ["Boa dedicação ao concluir todo o simulado."],
+        improvements: [
+          {
+            topic: "Revisão das questões com erro",
+            tip: "Releia a explicação das questões abaixo tentando resumir a ideia principal com suas próprias palavras.",
+          },
+        ],
+        encouragement: "Continue praticando! A constância é o segredo para evoluir.",
+      };
     }
   },
 };
