@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   BookOpen, 
@@ -21,7 +21,9 @@ import {
   Printer,
   MessageSquare,
   Bug,
-  AlertCircle
+  AlertCircle,
+  Save,
+  Trash2
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { jsPDF } from "jspdf";
@@ -31,6 +33,17 @@ import { geminiService, type QuizQuestion, type StudyTopic, type EvaluationResul
 import { cn } from "./lib/utils";
 
 type AppState = "HOME" | "CHOICE" | "STUDY" | "QUIZ_SETUP" | "QUIZ" | "RESULTS" | "QUICK_ANSWER" | "QUICK_ANSWER_RESULT" | "ASSIGNMENT" | "ASSIGNMENT_RESULT";
+
+interface QuizDraft {
+  subject: string;
+  questions: QuizQuestion[];
+  currentQuestionIndex: number;
+  userAnswers: Record<number, number>;
+  userOpenAnswers: Record<number, string>;
+  updatedAt: number;
+}
+
+const QUIZ_DRAFT_STORAGE_KEY = "lema_quiz_draft_v1";
 
 export default function App() {
   const [state, setState] = useState<AppState>("HOME");
@@ -64,6 +77,76 @@ export default function App() {
   const [feedbackType, setFeedbackType] = useState<"suggestion" | "bug">("suggestion");
   const [feedbackContent, setFeedbackContent] = useState("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+  // Quiz Draft Recovery State
+  const [savedDraft, setSavedDraft] = useState<QuizDraft | null>(() => {
+    try {
+      const raw = localStorage.getItem(QUIZ_DRAFT_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as QuizDraft;
+      if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+        return parsed;
+      }
+    } catch (e) {
+      console.warn("Não foi possível ler rascunho salvo:", e);
+    }
+    return null;
+  });
+  const cancelEvaluationRef = useRef(false);
+
+  // Auto-save quiz progress whenever questions or answers change during QUIZ
+  useEffect(() => {
+    if (state === "QUIZ" && questions.length > 0) {
+      const draft: QuizDraft = {
+        subject: subject.trim() || "Simulado Personalizado",
+        questions,
+        currentQuestionIndex,
+        userAnswers,
+        userOpenAnswers,
+        updatedAt: Date.now()
+      };
+      try {
+        localStorage.setItem(QUIZ_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+        setSavedDraft(draft);
+      } catch (e) {
+        console.warn("Não foi possível salvar rascunho no navegador:", e);
+      }
+    }
+  }, [state, subject, questions, currentQuestionIndex, userAnswers, userOpenAnswers]);
+
+  const restoreDraft = (draftToUse: QuizDraft | null = savedDraft) => {
+    if (!draftToUse || !draftToUse.questions?.length) return;
+    setSubject(draftToUse.subject || "");
+    setQuestions(draftToUse.questions);
+    const safeIdx = Math.min(
+      Math.max(0, draftToUse.currentQuestionIndex || 0),
+      draftToUse.questions.length - 1
+    );
+    setCurrentQuestionIndex(safeIdx);
+    setUserAnswers(draftToUse.userAnswers || {});
+    setUserOpenAnswers(draftToUse.userOpenAnswers || {});
+    setEvaluations({});
+    setPerformanceSummary(null);
+    setLoading(false);
+    setState("QUIZ");
+  };
+
+  const discardDraft = () => {
+    try {
+      localStorage.removeItem(QUIZ_DRAFT_STORAGE_KEY);
+    } catch {
+      // Ignore storage error
+    }
+    setSavedDraft(null);
+  };
+
+  const getDraftStats = (draft: QuizDraft) => {
+    const mcAnswered = Object.keys(draft.userAnswers || {}).length;
+    const openAnswered = Object.values(draft.userOpenAnswers || {}).filter(
+      (v) => Boolean(v && v.trim())
+    ).length;
+    return { mcAnswered, openAnswered, totalAnswered: mcAnswered + openAnswered };
+  };
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -311,6 +394,7 @@ export default function App() {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
+      cancelEvaluationRef.current = false;
       setLoading(true);
       const newEvaluations: Record<number, EvaluationResult> = {};
 
@@ -333,6 +417,8 @@ export default function App() {
           })
         );
 
+        if (cancelEvaluationRef.current) return;
+
         setEvaluations(newEvaluations);
 
         try {
@@ -342,15 +428,24 @@ export default function App() {
             userOpenAnswers,
             newEvaluations
           );
-          setPerformanceSummary(summary);
+          if (!cancelEvaluationRef.current) {
+            setPerformanceSummary(summary);
+          }
         } catch (e) {
           console.error("Erro ao gerar resumo geral:", e);
         }
+
+        if (!cancelEvaluationRef.current) {
+          discardDraft();
+          setLoading(false);
+          setState("RESULTS");
+        }
       } catch (err) {
         console.error("Erro ao finalizar simulado:", err);
-      } finally {
-        setLoading(false);
-        setState("RESULTS");
+        if (!cancelEvaluationRef.current) {
+          setLoading(false);
+          setState("RESULTS");
+        }
       }
     }
   };
@@ -476,6 +571,39 @@ export default function App() {
                   Começar Jornada
                   <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
+
+                {savedDraft && (
+                  <div className="mt-6 p-5 bg-white border-2 border-indigo-200 rounded-2xl shadow-sm text-left space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 uppercase tracking-wider">
+                          <Save className="w-4 h-4" />
+                          <span>Rascunho de Simulado Salvo</span>
+                        </div>
+                        <h3 className="font-bold text-slate-900 text-base">
+                          {savedDraft.subject || "Simulado Personalizado"}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          {getDraftStats(savedDraft).mcAnswered} objetivas · {getDraftStats(savedDraft).openAnswered} discursivas respondidas · Parou na questão {(savedDraft.currentQuestionIndex || 0) + 1} de {savedDraft.questions.length}
+                        </p>
+                      </div>
+                      <button
+                        onClick={discardDraft}
+                        title="Descartar rascunho"
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => restoreDraft(savedDraft)}
+                      className="w-full bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                    >
+                      Continuar de onde parei
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
                 <div className="pt-4">
                   <div className="relative">
@@ -1026,6 +1154,39 @@ export default function App() {
                 <p className="text-slate-500">Escolha como quer que o Gemini monte suas questões.</p>
               </div>
 
+              {savedDraft && (
+                <div className="bg-white p-6 rounded-3xl border-2 border-indigo-200 shadow-sm space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 uppercase tracking-wider">
+                        <Save className="w-4 h-4" />
+                        <span>Rascunho Encontrado</span>
+                      </div>
+                      <h3 className="font-bold text-slate-900 text-lg">
+                        {savedDraft.subject || "Simulado Personalizado"}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Suas respostas estão salvas ({getDraftStats(savedDraft).mcAnswered} objetivas · {getDraftStats(savedDraft).openAnswered} discursivas respondidas).
+                      </p>
+                    </div>
+                    <button
+                      onClick={discardDraft}
+                      className="text-xs font-semibold text-slate-400 hover:text-rose-600 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Descartar
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => restoreDraft(savedDraft)}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 px-6 rounded-2xl transition-all flex items-center justify-center gap-2"
+                  >
+                    Continuar Simulado Salvo
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
               <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8">
                 <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 space-y-3">
                   <h3 className="font-bold text-indigo-900 flex items-center gap-2">
@@ -1200,25 +1361,60 @@ export default function App() {
               animate={{ opacity: 1 }}
               className="space-y-8"
             >
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-bold text-indigo-600 uppercase tracking-widest">
-                    {questions[currentQuestionIndex].type === "MULTIPLE_CHOICE" ? "Objetiva" : "Discursiva"} - {currentQuestionIndex + 1} de {questions.length}
-                  </h2>
-                  <div className="w-64 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <motion.div 
-                      className="h-full bg-indigo-600"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}
-                    />
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-bold text-indigo-600 uppercase tracking-widest">
+                      <span>{questions[currentQuestionIndex].type === "MULTIPLE_CHOICE" ? "Objetiva" : "Discursiva"} - {currentQuestionIndex + 1} de {questions.length}</span>
+                      <span className="text-slate-300" aria-hidden="true">·</span>
+                      <span className="text-xs font-medium normal-case tracking-normal text-emerald-600 flex items-center gap-1">
+                        <Save className="w-3.5 h-3.5" /> Rascunho salvo automaticamente
+                      </span>
+                    </div>
+                    <div className="w-64 h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <motion.div 
+                        className="h-full bg-indigo-600"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-slate-500 text-xs font-medium">
+                    {questions[currentQuestionIndex].type === "OPEN_ENDED" && (
+                      <span className="text-indigo-600 font-semibold">
+                        Responda pelo menos 3 discursivas
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div className="text-slate-400 font-medium">
-                  {questions[currentQuestionIndex].type === "OPEN_ENDED" && (
-                    <span className="text-indigo-600 font-bold text-xs bg-indigo-50 px-3 py-1 rounded-full">
-                      Responda pelo menos 3 discursivas
-                    </span>
-                  )}
+
+                {/* Navegação rápida entre questões para revisar rascunho */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {questions.map((q, idx) => {
+                    const isCurrent = idx === currentQuestionIndex;
+                    const isAnswered =
+                      q.type === "MULTIPLE_CHOICE"
+                        ? userAnswers[idx] !== undefined
+                        : Boolean(userOpenAnswers[q.id]?.trim());
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setCurrentQuestionIndex(idx)}
+                        className={cn(
+                          "w-8 h-8 rounded-lg text-xs font-bold transition-all flex items-center justify-center border",
+                          isCurrent
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : isAnswered
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:border-emerald-400"
+                            : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
+                        )}
+                        title={`Ir para questão ${idx + 1}${isAnswered ? " (Respondida)" : ""}`}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1586,8 +1782,27 @@ export default function App() {
                 <div className="w-2 h-2 bg-indigo-600 rounded-full animate-ping" />
               </div>
             </div>
-            <h3 className="mt-8 text-2xl font-bold text-slate-900">O Gemini está preparando tudo...</h3>
-            <p className="mt-2 text-slate-500 max-w-xs">Organizando tópicos e criando questões exclusivas para você.</p>
+            <h3 className="mt-8 text-2xl font-bold text-slate-900">
+              {state === "QUIZ" ? "Avaliando suas respostas..." : "O Gemini está preparando tudo..."}
+            </h3>
+            <p className="mt-2 text-slate-500 max-w-xs">
+              {state === "QUIZ"
+                ? "Suas respostas já estão salvas em rascunho enquanto calculamos sua nota."
+                : "Organizando tópicos e criando questões exclusivas para você."}
+            </p>
+            {state === "QUIZ" && (
+              <button
+                type="button"
+                onClick={() => {
+                  cancelEvaluationRef.current = true;
+                  setLoading(false);
+                }}
+                className="mt-6 px-5 py-2.5 bg-white border-2 border-slate-200 hover:border-indigo-500 text-slate-700 hover:text-indigo-600 font-bold text-sm rounded-xl transition-all flex items-center gap-2 shadow-sm"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Voltar às minhas respostas (Rascunho salvo)
+              </button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
