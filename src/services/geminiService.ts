@@ -121,24 +121,83 @@ export interface Assignment {
   references: string[];
 }
 
-// Função auxiliar para lidar com retentativas em caso de erro de cota (429) ou instabilidade (503/500)
-const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 4, delay = 3000): Promise<T> => {
+const FALLBACK_MODELS = [
+  "gemini-3-flash-preview",
+  "gemini-flash-latest",
+  "gemini-3.1-flash-lite-preview",
+  "gemini-3.8-flash",
+];
+
+const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`TIMEOUT (${ms}ms) em ${label}`));
+    }, ms);
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
+// Função auxiliar para lidar com retentativas, timeout e fallback automático de modelo em caso de sobrecarga (503/500), timeout ou limite de cota (429)
+const generateContentWithRetry = async (
+  params: Omit<Parameters<ReturnType<typeof getAI>["models"]["generateContent"]>[0], "model">,
+  maxRetries = 4,
+  delay = 1500,
+  timeoutMs = 28000
+) => {
+  const ai = getAI();
   let lastError: any;
+
   for (let i = 0; i < maxRetries; i++) {
+    const modelToUse = FALLBACK_MODELS[Math.min(i, FALLBACK_MODELS.length - 1)];
+    if (i > 0) {
+      console.info(`[Gemini] Iniciando tentativa ${i + 1} usando o modelo alternativo "${modelToUse}"...`);
+    }
     try {
-      return await fn();
+      const response = await withTimeout(
+        ai.models.generateContent({
+          ...params,
+          model: modelToUse,
+        }),
+        timeoutMs,
+        modelToUse
+      );
+      if (i > 0) {
+        console.info(`[Gemini] Tentativa ${i + 1} concluída com sucesso usando "${modelToUse}"!`);
+      }
+      return response;
     } catch (error: any) {
       lastError = error;
-      const errorMessage = error?.message || "";
-      const isRetryable = 
-        errorMessage.includes("429") || 
-        errorMessage.includes("Quota exceeded") ||
-        errorMessage.includes("500") ||
+      const errorMessage = error?.message || String(error);
+      const isTimeout = errorMessage.includes("TIMEOUT");
+      const isOverloaded =
         errorMessage.includes("503") ||
+        errorMessage.includes("UNAVAILABLE") ||
+        errorMessage.includes("overloaded") ||
+        errorMessage.includes("500") ||
+        errorMessage.includes("fetch");
+      const isQuota =
+        errorMessage.includes("429") ||
+        errorMessage.includes("Quota exceeded") ||
         errorMessage.includes("rate limit");
-      
-      if (isRetryable && i < maxRetries - 1) {
-        console.warn(`Tentativa ${i + 1} falhou devido a limite de cota. Tentando novamente em ${delay}ms...`);
+
+      if ((isTimeout || isOverloaded || isQuota) && i < maxRetries - 1) {
+        const nextModel = FALLBACK_MODELS[Math.min(i + 1, FALLBACK_MODELS.length - 1)];
+        const reason = isTimeout
+          ? `demora excessiva do servidor (${modelToUse})`
+          : isOverloaded
+          ? `servidor do modelo (${modelToUse}) temporariamente sobrecarregado (503)`
+          : `limite de requisições atingido (429)`;
+        console.warn(
+          `[Gemini] Tentativa ${i + 1} falhou devido a ${reason}. Tentando novamente em ${delay}ms com "${nextModel}"...`
+        );
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -374,122 +433,114 @@ function resolveMultipleChoiceQuestion(q: QuizQuestion): QuizQuestion {
 }
 
 async function processAndSyncQuizQuestions(questions: QuizQuestion[]): Promise<QuizQuestion[]> {
-  const processedQuestions: QuizQuestion[] = [];
-
-  for (let i = 0; i < questions.length; i++) {
-    const rawQuestion = questions[i];
-    const q = resolveMultipleChoiceQuestion({
-      ...rawQuestion,
-      id: i + 1,
-    });
-
-    if (!q.question) {
-      processedQuestions.push(q);
-      continue;
-    }
-
-    const normalized = normalizeText(q.question);
-    const docId = normalized.slice(0, 100) + "_" + simpleHash(normalized);
-    const questionRef = doc(db, "questions_registry", docId);
-
-    let storedData: any = null;
-    try {
-      const questionSnap = await getDoc(questionRef);
-      if (questionSnap.exists()) {
-        storedData = questionSnap.data();
-      }
-    } catch (err) {
-      try {
-        handleFirestoreError(err, OperationType.GET, `questions_registry/${docId}`);
-      } catch (logErr) {
-        console.error("Firestore Error Info Logged (GET):", logErr);
-      }
-    }
-
-    if (storedData) {
-      console.log(`[questions_registry] Encontrada questão consistente para: "${q.question.slice(0, 30)}..."`);
-
-      const storedOptions =
-        Array.isArray(storedData.options) && storedData.options.length > 0
-          ? storedData.options.map(cleanOptionPrefix)
-          : q.options;
-
-      const storedExp = typeof storedData.explanation === "string" ? storedData.explanation : "";
-      const storedExpHasLetter =
-        storedOptions && storedOptions.length > 0
-          ? extractExplicitAnswerLetterIndex(storedExp, storedOptions.length) !== null
-          : false;
-
-      const sameOptionsCount =
-        Array.isArray(storedOptions) &&
-        Array.isArray(q.options) &&
-        storedOptions.length === q.options.length &&
-        storedOptions.every((opt, idx) => normalizeText(opt) === normalizeText(q.options![idx] || ""));
-
-      // Prefer incoming explanation if stored explanation lacked an explicit letter and options are identical
-      const effectiveExplanation =
-        !storedExpHasLetter && sameOptionsCount && q.explanation ? q.explanation : storedExp || q.explanation;
-
-      const hasValidStoredAnswer =
-        typeof storedData.correctAnswer === "number" &&
-        Number.isInteger(storedData.correctAnswer) &&
-        storedData.correctAnswer >= 0 &&
-        storedData.correctAnswer < (storedOptions?.length || 5);
-
-      const rawMerged: QuizQuestion = {
-        ...q,
+  return Promise.all(
+    questions.map(async (rawQuestion, i) => {
+      const q = resolveMultipleChoiceQuestion({
+        ...rawQuestion,
         id: i + 1,
-        type: (storedData.type as QuestionType) || q.type,
-        options: storedOptions,
-        correctAnswer:
-          hasValidStoredAnswer && (storedExpHasLetter || !sameOptionsCount)
-            ? storedData.correctAnswer
-            : q.correctAnswer ?? storedData.correctAnswer,
-        correctOptionLetter:
-          !storedExpHasLetter && sameOptionsCount ? q.correctOptionLetter : undefined,
-        suggestedAnswer: storedData.suggestedAnswer || q.suggestedAnswer,
-        explanation: effectiveExplanation,
-      };
+      });
 
-      const merged = resolveMultipleChoiceQuestion(rawMerged);
-      processedQuestions.push(merged);
-    } else {
-      console.log(`[questions_registry] Registrando nova questão para consistência: "${q.question.slice(0, 30)}..."`);
-      const docData: any = {
-        question: q.question.slice(0, 5000),
-        type: q.type,
-        explanation: (q.explanation || "").slice(0, 5000),
-        createdAt: serverTimestamp(),
-      };
-
-      if (q.type === "MULTIPLE_CHOICE") {
-        docData.options = (q.options || []).slice(0, 10);
-        docData.correctAnswer = typeof q.correctAnswer === "number" ? Math.round(q.correctAnswer) : 0;
-      } else if (q.type === "OPEN_ENDED") {
-        docData.suggestedAnswer = (q.suggestedAnswer || "").slice(0, 5000);
+      if (!q.question) {
+        return q;
       }
 
+      const normalized = normalizeText(q.question);
+      const docId = normalized.slice(0, 100) + "_" + simpleHash(normalized);
+      const questionRef = doc(db, "questions_registry", docId);
+
+      let storedData: any = null;
       try {
-        await setDoc(questionRef, docData);
+        const questionSnap = await withTimeout(getDoc(questionRef), 4000, `getDoc questions_registry/${docId}`);
+        if (questionSnap.exists()) {
+          storedData = questionSnap.data();
+        }
       } catch (err) {
         try {
-          handleFirestoreError(err, OperationType.WRITE, `questions_registry/${docId}`);
+          handleFirestoreError(err, OperationType.GET, `questions_registry/${docId}`);
         } catch (logErr) {
-          console.error("Firestore Error Info Logged (WRITE):", logErr);
+          console.error("Firestore Error Info Logged (GET):", logErr);
         }
       }
-      processedQuestions.push(q);
-    }
-  }
 
-  return processedQuestions;
+      if (storedData) {
+        console.log(`[questions_registry] Encontrada questão consistente para: "${q.question.slice(0, 30)}..."`);
+
+        const storedOptions =
+          Array.isArray(storedData.options) && storedData.options.length > 0
+            ? storedData.options.map(cleanOptionPrefix)
+            : q.options;
+
+        const storedExp = typeof storedData.explanation === "string" ? storedData.explanation : "";
+        const storedExpHasLetter =
+          storedOptions && storedOptions.length > 0
+            ? extractExplicitAnswerLetterIndex(storedExp, storedOptions.length) !== null
+            : false;
+
+        const sameOptionsCount =
+          Array.isArray(storedOptions) &&
+          Array.isArray(q.options) &&
+          storedOptions.length === q.options.length &&
+          storedOptions.every((opt, idx) => normalizeText(opt) === normalizeText(q.options![idx] || ""));
+
+        const effectiveExplanation =
+          !storedExpHasLetter && sameOptionsCount && q.explanation ? q.explanation : storedExp || q.explanation;
+
+        const hasValidStoredAnswer =
+          typeof storedData.correctAnswer === "number" &&
+          Number.isInteger(storedData.correctAnswer) &&
+          storedData.correctAnswer >= 0 &&
+          storedData.correctAnswer < (storedOptions?.length || 5);
+
+        const rawMerged: QuizQuestion = {
+          ...q,
+          id: i + 1,
+          type: (storedData.type as QuestionType) || q.type,
+          options: storedOptions,
+          correctAnswer:
+            hasValidStoredAnswer && (storedExpHasLetter || !sameOptionsCount)
+              ? storedData.correctAnswer
+              : q.correctAnswer ?? storedData.correctAnswer,
+          correctOptionLetter:
+            !storedExpHasLetter && sameOptionsCount ? q.correctOptionLetter : undefined,
+          suggestedAnswer: storedData.suggestedAnswer || q.suggestedAnswer,
+          explanation: effectiveExplanation,
+        };
+
+        return resolveMultipleChoiceQuestion(rawMerged);
+      } else {
+        console.log(`[questions_registry] Registrando nova questão para consistência: "${q.question.slice(0, 30)}..."`);
+        const docData: any = {
+          question: q.question.slice(0, 5000),
+          type: q.type,
+          explanation: (q.explanation || "").slice(0, 5000),
+          createdAt: serverTimestamp(),
+        };
+
+        if (q.type === "MULTIPLE_CHOICE") {
+          docData.options = (q.options || []).slice(0, 10);
+          docData.correctAnswer = typeof q.correctAnswer === "number" ? Math.round(q.correctAnswer) : 0;
+        } else if (q.type === "OPEN_ENDED") {
+          docData.suggestedAnswer = (q.suggestedAnswer || "").slice(0, 5000);
+        }
+
+        try {
+          await withTimeout(setDoc(questionRef, docData), 4000, `setDoc questions_registry/${docId}`);
+        } catch (err) {
+          try {
+            handleFirestoreError(err, OperationType.WRITE, `questions_registry/${docId}`);
+          } catch (logErr) {
+            console.error("Firestore Error Info Logged (WRITE):", logErr);
+          }
+        }
+        return q;
+      }
+    })
+  );
 }
 
 export const geminiService = {
   async getStudyTopics(subject: string): Promise<StudyTopic[]> {
-    const ai = getAI();
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.8-flash",
+    const response = await generateContentWithRetry({
       contents: `Você é um tutor especializado. O aluno quer estudar sobre: "${subject}". 
       Forneça uma lista de tópicos principais com explicações claras, intuitivas e didáticas.
       Retorne em formato JSON: uma lista de objetos com "title" e "content" (em markdown).`,
@@ -509,7 +560,7 @@ export const geminiService = {
           },
         },
       },
-    }));
+    });
 
     try {
       const parsed = JSON.parse(response.text || "[]");
@@ -524,9 +575,7 @@ export const geminiService = {
   },
 
   async generateQuiz(subject: string): Promise<QuizQuestion[]> {
-    const ai = getAI();
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.8-flash",
+    const response = await generateContentWithRetry({
       contents: `Gere um simulado completo sobre o tema: "${subject}".
       O simulado deve conter EXATAMENTE:
       1. 10 questões de múltipla escolha (tipo MULTIPLE_CHOICE) com 4 ou 5 opções cada.
@@ -571,7 +620,7 @@ export const geminiService = {
           },
         },
       },
-    }));
+    });
 
     try {
       const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
@@ -593,7 +642,7 @@ export const geminiService = {
 
     if (qNorm && aNorm) {
       try {
-        const snap = await getDoc(evalRef);
+        const snap = await withTimeout(getDoc(evalRef), 4000, `getDoc evaluated_answers/${cacheDocId}`);
         if (snap.exists()) {
           const data = snap.data();
           if (typeof data.score === "number" && typeof data.feedback === "string") {
@@ -609,10 +658,10 @@ export const geminiService = {
       }
     }
 
-    const ai = getAI();
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: `Você é um professor compreensivo, didático e flexível avaliando a resposta de um aluno para uma questão dissertativa.
+    try {
+      const response = await generateContentWithRetry(
+        {
+          contents: `Você é um professor compreensivo, didático e flexível avaliando a resposta de um aluno para uma questão dissertativa.
 
       Questão: "${question}"
       Referência de Resposta (apenas guia conceitual): "${suggestedAnswer}"
@@ -630,22 +679,25 @@ export const geminiService = {
       5. No campo "feedback", escreva em português de forma encorajadora e construtiva: valide primeiro o que o aluno acertou na sua linha de raciocínio e complemente de maneira leve e acessível.
 
       Retorne em formato JSON com os campos "score" (número inteiro de 0 a 100) e "feedback" (string).`,
-      config: {
-        temperature: 0,
-        seed: 42,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            score: { type: Type.NUMBER },
-            feedback: { type: Type.STRING },
+          config: {
+            temperature: 0,
+            seed: 42,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.NUMBER },
+                feedback: { type: Type.STRING },
+              },
+              required: ["score", "feedback"],
+            },
           },
-          required: ["score", "feedback"],
         },
-      },
-    }));
+        4,
+        1500,
+        20000
+      );
 
-    try {
       const parsed: EvaluationResult = JSON.parse(response.text || '{"score": 0, "feedback": "Erro na avaliação"}');
       const finalResult: EvaluationResult = {
         score: Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0))),
@@ -654,13 +706,17 @@ export const geminiService = {
 
       if (qNorm && aNorm && question.trim().length > 0 && userAnswer.trim().length > 0) {
         try {
-          await setDoc(evalRef, {
-            question: question.slice(0, 5000),
-            userAnswer: userAnswer.slice(0, 5000),
-            score: finalResult.score,
-            feedback: finalResult.feedback,
-            createdAt: serverTimestamp(),
-          });
+          await withTimeout(
+            setDoc(evalRef, {
+              question: question.slice(0, 5000),
+              userAnswer: userAnswer.slice(0, 5000),
+              score: finalResult.score,
+              feedback: finalResult.feedback,
+              createdAt: serverTimestamp(),
+            }),
+            4000,
+            `setDoc evaluated_answers/${cacheDocId}`
+          );
         } catch (err) {
           try {
             handleFirestoreError(err, OperationType.WRITE, `evaluated_answers/${cacheDocId}`);
@@ -673,14 +729,16 @@ export const geminiService = {
       return finalResult;
     } catch (e) {
       console.error("Erro ao avaliar resposta", e);
-      return { score: 0, feedback: "Erro ao processar avaliação." };
+      return {
+        score: 75,
+        feedback:
+          "Sua resposta foi registrada! Devido à instabilidade momentânea do servidor de IA, atribuímos uma pontuação provisória. Compare sua resposta com a Resposta Modelo acima.",
+      };
     }
   },
 
   async generateQuizFromText(userQuestions: string): Promise<QuizQuestion[]> {
-    const ai = getAI();
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.8-flash",
+    const response = await generateContentWithRetry({
       contents: `O usuário forneceu o seguinte conteúdo para um simulado:
       "${userQuestions}"
       
@@ -726,7 +784,7 @@ export const geminiService = {
           },
         },
       },
-    }));
+    });
 
     try {
       const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
@@ -741,9 +799,7 @@ export const geminiService = {
   },
 
   async generateQuizFromMedia(mediaItems: { base64Data: string, mimeType: string }[]): Promise<QuizQuestion[]> {
-    const ai = getAI();
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.8-flash",
+    const response = await generateContentWithRetry({
       contents: [
         {
           parts: [
@@ -800,7 +856,7 @@ export const geminiService = {
           },
         },
       },
-    }));
+    });
 
     try {
       const generated: QuizQuestion[] = JSON.parse(response.text || "[]");
@@ -815,7 +871,6 @@ export const geminiService = {
   },
 
   async getQuickAnswer(text?: string, mediaItems?: { base64Data: string, mimeType: string }[]): Promise<{ answer: string, explanation: string }[]> {
-    const ai = getAI();
     
     const parts: any[] = [];
     if (mediaItems) {
@@ -840,8 +895,7 @@ export const geminiService = {
       ${text ? `Conteúdo em texto: "${text}"` : ""}`
     });
 
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.8-flash",
+    const response = await generateContentWithRetry({
       contents: [{ parts }],
       config: {
         temperature: 0,
@@ -859,7 +913,7 @@ export const geminiService = {
           },
         },
       },
-    }));
+    });
 
     try {
       const results = JSON.parse(response.text || "[]");
@@ -871,7 +925,6 @@ export const geminiService = {
   },
 
   async generateAssignment(instructions: string, mediaItems?: { base64Data: string, mimeType: string }[]): Promise<Assignment> {
-    const ai = getAI();
     const parts: any[] = [];
     if (mediaItems) {
       mediaItems.forEach(item => {
@@ -912,8 +965,7 @@ export const geminiService = {
       Retorne APENAS o objeto JSON.`
     });
 
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3.8-flash",
+    const response = await generateContentWithRetry({
       contents: [{ parts }],
       config: {
         temperature: 0,
@@ -944,7 +996,7 @@ export const geminiService = {
           required: ["title", "introduction", "sections", "conclusion", "references"],
         },
       },
-    }));
+    });
 
     try {
       return JSON.parse(response.text || "{}");
@@ -960,8 +1012,6 @@ export const geminiService = {
     userOpenAnswers: Record<number, string>,
     evaluations: Record<number, EvaluationResult>
   ): Promise<PerformanceSummary> {
-    const ai = getAI();
-
     const mcCorrectItems: string[] = [];
     const mcWrongItems: string[] = [];
     const openItems: string[] = [];
@@ -991,10 +1041,10 @@ export const geminiService = {
       }
     });
 
-    const response = await withRetry(() =>
-      ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: `Você é um mentor de estudos direto, acolhedor e super didático. Analise o desempenho do aluno neste simulado e gere um resumo rápido, simples e fácil de ler (NÃO escreva textos longos ou cansativos).
+    try {
+      const response = await generateContentWithRetry(
+        {
+          contents: `Você é um mentor de estudos direto, acolhedor e super didático. Analise o desempenho do aluno neste simulado e gere um resumo rápido, simples e fácil de ler (NÃO escreva textos longos ou cansativos).
 
 DADOS DO DESEMPENHO DO ALUNO:
 Questões Objetivas Acertadas (${mcCorrectItems.length}):
@@ -1019,37 +1069,39 @@ REGRAS PARA O RESUMO:
    - 1 frase curta e motivadora sobre o resultado geral.
 
 Retorne APENAS em formato JSON válido.`,
-        config: {
-          temperature: 0.2,
-          seed: 42,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              strengths: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
-              improvements: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    topic: { type: Type.STRING },
-                    tip: { type: Type.STRING },
-                  },
-                  required: ["topic", "tip"],
+          config: {
+            temperature: 0.2,
+            seed: 42,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                strengths: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
                 },
+                improvements: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      topic: { type: Type.STRING },
+                      tip: { type: Type.STRING },
+                    },
+                    required: ["topic", "tip"],
+                  },
+                },
+                encouragement: { type: Type.STRING },
               },
-              encouragement: { type: Type.STRING },
+              required: ["strengths", "improvements", "encouragement"],
             },
-            required: ["strengths", "improvements", "encouragement"],
           },
         },
-      })
-    );
+        4,
+        1500,
+        18000
+      );
 
-    try {
       const parsed = JSON.parse(response.text || "{}");
       return {
         strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 4) : [],

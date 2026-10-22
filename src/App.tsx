@@ -311,33 +311,47 @@ export default function App() {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
-      // Finalize and evaluate open answers
       setLoading(true);
       const newEvaluations: Record<number, EvaluationResult> = {};
-      
-      const openQuestions = questions.filter(q => q.type === "OPEN_ENDED");
-      for (const q of openQuestions) {
-        const answer = userOpenAnswers[q.id];
-        if (answer && answer.trim()) {
-          const evalResult = await geminiService.evaluateOpenAnswer(q.question, q.suggestedAnswer || "", answer);
-          newEvaluations[q.id] = evalResult;
-        }
-      }
-      
-      setEvaluations(newEvaluations);
+
       try {
-        const summary = await geminiService.generateQuizSummary(
-          questions,
-          userAnswers,
-          userOpenAnswers,
-          newEvaluations
+        const openQuestions = questions.filter(q => q.type === "OPEN_ENDED");
+        const answeredOpenQuestions = openQuestions.filter(q => {
+          const answer = userOpenAnswers[q.id];
+          return Boolean(answer && answer.trim());
+        });
+
+        await Promise.all(
+          answeredOpenQuestions.map(async (q) => {
+            const answer = userOpenAnswers[q.id];
+            const evalResult = await geminiService.evaluateOpenAnswer(
+              q.question,
+              q.suggestedAnswer || "",
+              answer
+            );
+            newEvaluations[q.id] = evalResult;
+          })
         );
-        setPerformanceSummary(summary);
-      } catch (e) {
-        console.error("Erro ao gerar resumo geral:", e);
+
+        setEvaluations(newEvaluations);
+
+        try {
+          const summary = await geminiService.generateQuizSummary(
+            questions,
+            userAnswers,
+            userOpenAnswers,
+            newEvaluations
+          );
+          setPerformanceSummary(summary);
+        } catch (e) {
+          console.error("Erro ao gerar resumo geral:", e);
+        }
+      } catch (err) {
+        console.error("Erro ao finalizar simulado:", err);
+      } finally {
+        setLoading(false);
+        setState("RESULTS");
       }
-      setLoading(false);
-      setState("RESULTS");
     }
   };
 
